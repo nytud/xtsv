@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
+
 import sys
 import codecs
 from itertools import chain
@@ -9,17 +10,21 @@ from flask import Flask, request, Response, stream_with_context
 from flask_restful import Api, Resource
 from werkzeug.exceptions import abort
 
-from config import presets, initialised_tools, alias_store
-from xtsv.tsvhandler import process
+from .tsvhandler import process
 
 
-def init_everything(available_tools, init_once=True):  # Init everything properly
-    if init_once:
-        current_initialised_tools = initialised_tools  # The singleton store
-        currrent_alias_store = alias_store
-    else:
+def init_everything(available_tools, init_singleton=None):  # Init everything properly
+    if init_singleton is None:
         current_initialised_tools = {}
         currrent_alias_store = defaultdict(list)
+    elif not isinstance(init_singleton, tuple) or len(init_singleton) != 2 or (
+            isinstance(init_singleton[0], dict) and isinstance(init_singleton[1], defaultdict) and
+            isinstance(init_singleton[1].default_factory, list)):
+        current_initialised_tools = init_singleton[0]   # The singleton store
+        currrent_alias_store = init_singleton[0]
+    else:
+        raise TypeError('init_singleton is expected to be (dict, defaultdict(list) instead of {0}'.
+                        format(type(init_singleton)))
 
     for prog_name, prog_params in available_tools.items():
         prog, prog_args, prog_kwargs = prog_params
@@ -34,7 +39,7 @@ def init_everything(available_tools, init_once=True):  # Init everything properl
     return current_initialised_tools
 
 
-def build_pipeline(inp_stream, used_tools, available_tools, conll_comments=False):
+def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comments=False):
     # Resolve presets to module names to enable shorter URLs...
     if len(used_tools) == 1 and used_tools[0] in presets:
         used_tools = presets[used_tools[0]]
@@ -68,12 +73,12 @@ def build_pipeline(inp_stream, used_tools, available_tools, conll_comments=False
     return pipeline_end
 
 
-def add_params(restapi, resource_class, internal_apps, conll_comments):
+def add_params(restapi, resource_class, internal_apps, presets, conll_comments):
     if internal_apps is None:
         print('No internal_app is given!', file=sys.stderr)
         exit(1)
 
-    kwargs = {'internal_apps': internal_apps, 'conll_comments': conll_comments}
+    kwargs = {'internal_apps': internal_apps, 'presets': presets, 'conll_comments': conll_comments}
     # To bypass using self and @route together, default values are at the function declarations
     restapi.add_resource(resource_class, '/', '/<path:path>', resource_class_kwargs=kwargs)
 
@@ -93,25 +98,27 @@ class RESTapp(Resource):
 
         try:
             # TODO: Maybe enable per request setting of allowing conll-style comments
-            last_prog = build_pipeline(inp_file, path.split('/'), self._internal_apps, self._conll_comments)
+            last_prog = build_pipeline(inp_file, path.split('/'), self._internal_apps, self._presets,
+                                       self._conll_comments)
         except NameError as e:
             abort(400, e)
 
         return Response(stream_with_context((line.encode('UTF-8') for line in last_prog)),
                         direct_passthrough=True)
 
-    def __init__(self, internal_apps=None, conll_comments=False):
+    def __init__(self, internal_apps=None, presets=(), conll_comments=False):
         """
         Init REST API class
         :param internal_apps: pre-inicialised applications
         """
         self._internal_apps = internal_apps
+        self._presets = presets
         self._conll_comments = conll_comments
         # atexit.register(self._internal_apps.__del__)  # For clean exit...
 
 
-def pipeline_rest_api(available_tools, name, conll_comments):
+def pipeline_rest_api(name, available_tools, presets, conll_comments):
     app = Flask(name)
     api = Api(app)
-    add_params(api, RESTapp, available_tools, conll_comments)
+    add_params(api, RESTapp, available_tools, presets, conll_comments)
     return app
