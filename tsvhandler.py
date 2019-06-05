@@ -27,7 +27,7 @@ def process_header(stream, source_fields, target_fields):
 def process(stream, internal_app, conll_comments=False):
     if len(internal_app.source_fields) > 0:
         header, field_names = process_header(stream, internal_app.source_fields, internal_app.target_fields)
-        if internal_app.pass_header:  # Pass or hold back the header TODO: Maybe there shoud be an option to modify it
+        if getattr(internal_app, 'pass_header', True):  # Pass or hold back the header
             yield header
 
         # Like binding names to indices...
