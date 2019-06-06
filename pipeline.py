@@ -10,9 +10,13 @@ from flask_restful import Api, Resource
 from werkzeug.exceptions import abort
 
 from .tsvhandler import process
+from .jnius_wrapper import jnius_config, import_pyjnius
 
 
 def init_everything(available_tools, init_singleton=None):  # Init everything properly
+    # Here we must challenge if any classpath or JAVA VM options are set to be able to throw the exception if needed
+    if jnius_config.classpath is not None or len(jnius_config.options) > 0:
+        import_pyjnius()
     if init_singleton is None:
         current_initialised_tools = {}
         currrent_alias_store = defaultdict(list)
