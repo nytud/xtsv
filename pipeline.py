@@ -88,6 +88,7 @@ class RESTapp(Resource):
                 ' or '.join(self._internal_apps.keys()), ' and '.join(path.split('/')))
 
     def post(self, path):
+        conll_comments = request.form.get('conll_comments', self._conll_comments)
         if 'file' not in request.files:
             abort(400, 'ERROR: input file not found in request!')
 
@@ -95,9 +96,7 @@ class RESTapp(Resource):
         last_prog = ()  # Silence, dummy IDE
 
         try:
-            # TODO: Maybe enable per request setting of allowing conll-style comments
-            last_prog = build_pipeline(inp_file, path.split('/'), self._internal_apps, self._presets,
-                                       self._conll_comments)
+            last_prog = build_pipeline(inp_file, path.split('/'), self._internal_apps, self._presets, conll_comments)
         except NameError as e:
             abort(400, e)
 
