@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
-import sys
 import codecs
 from itertools import chain
 from collections import defaultdict
@@ -75,8 +74,7 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
 
 def add_params(restapi, resource_class, internal_apps, presets, conll_comments):
     if internal_apps is None:
-        print('No internal_app is given!', file=sys.stderr)
-        exit(1)
+        raise ValueError('No internal_app is given!')
 
     kwargs = {'internal_apps': internal_apps, 'presets': presets, 'conll_comments': conll_comments}
     # To bypass using self and @route together, default values are at the function declarations
