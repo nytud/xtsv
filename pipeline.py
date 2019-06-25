@@ -5,12 +5,25 @@ import codecs
 from itertools import chain
 from collections import defaultdict
 
-from flask import Flask, request, Response, stream_with_context
+# import atexit
+
+from json import dumps as json_dumps
+
+from flask import Flask, request, Response, stream_with_context, make_response
 from flask_restful import Api, Resource
 from werkzeug.exceptions import abort
 
 from .tsvhandler import process
 from .jnius_wrapper import jnius_config, import_pyjnius
+
+
+def make_json_response(json_text, status=200):
+    """https://stackoverflow.com/questions/16908943/display-json-returned-from-flask-in-a-neat-way/23320628#23320628 """
+    response = make_response(json_text)
+    response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    response.headers['mimetype'] = 'application/json'
+    response.status_code = status
+    return response
 
 
 def init_everything(available_tools, init_singleton=None):  # Init everything properly
@@ -87,9 +100,24 @@ def add_params(restapi, resource_class, internal_apps, presets, conll_comments):
 
 class RESTapp(Resource):
     def get(self, path=''):
-        return 'Usage: HTTP POST /tool1/tool2/tool3 e.g: \'{0}\' but suplied \'{1}\' a file' \
-               ' mamed as \'file\' in the apropriate TSV format'.format(
-                ' or '.join(self._internal_apps.keys()), ' and '.join(path.split('/')))
+        # fun/token
+        fun = None
+        token = ''
+        if '/' in path:
+            fun, token = path.split('/', maxsplit=1)
+
+        if len(path) == 0 or len(token) == 0 or fun not in self._internal_apps or not hasattr(self._internal_apps[fun],
+                                                                                              'process_token'):
+            abort(400, 'Usage: HTTP POST /tool1/tool2/tool3 e.g: \'{0}\' but suplied \'{1}\' a file' \
+                       ' mamed as \'file\' in the apropriate TSV format or HTTP GET {2} ' \
+                       'Further info: https://github.com/ppke-nlpg/emmorphpy'.
+                  format(' or '.join(self._internal_apps.keys()), ' and '.join(path.split('/')),
+                         '/stem/word, /analyze/word, /dstem/word'))  # TODO
+
+        json_text = json_dumps({token: self._internal_apps[fun].process_token(token)},
+                               indent=2, sort_keys=True, ensure_ascii=False)
+
+        return make_json_response(json_text)
 
     def post(self, path):
         conll_comments = request.form.get('conll_comments', self._conll_comments)
@@ -111,6 +139,8 @@ class RESTapp(Resource):
         """
         Init REST API class
         :param internal_apps: pre-inicialised applications
+        :param presets: pre-defined chains eg. from tokenisation to dependency parsing'
+        :param conll_comments: CoNLL-U-style comments (lines beginning with '#') before sentences
         """
         self._internal_apps = internal_apps
         self._presets = presets
@@ -122,4 +152,5 @@ def pipeline_rest_api(name, available_tools, presets, conll_comments):
     app = Flask(name)
     api = Api(app)
     add_params(api, RESTapp, available_tools, presets, conll_comments)
+
     return app

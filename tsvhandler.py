@@ -6,7 +6,7 @@ logger = logging.getLogger('xtsv')
 
 
 def process_header(fields, source_fields, target_fields):
-    if not source_fields.issubset(set(fields)):
+    if not source_fields.issubset(set(fields)):  # TODO: Better exception handling...
         raise NameError('Input does not have the required field names ({0}). The following field names found: {1}'.
                         format(sorted(source_fields), fields))
     fields.extend(target_fields)                                    # Add target fields when apply (only for tagging)
