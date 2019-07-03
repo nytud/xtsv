@@ -2,13 +2,17 @@ import sys
 from argparse import ArgumentParser, FileType, REMAINDER
 
 
-def add_bool_arg(parser, name, help_text, default=False):
-    # Original code from:
+def add_bool_arg(parser, name, help_text, default=False, has_negative_variant=True):
+    # Original version of the code is code from:
     #  https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse/31347222#31347222
-    group = parser.add_mutually_exclusive_group(required=False)
+    group = parser  # the main parser is the default
+    if has_negative_variant:  # Add exclusive group only when there is negative variant!
+        group = parser.add_mutually_exclusive_group(required=False)
+        group.add_argument('--no-' + name, dest=name.replace('-', '_'), help='{0} (negative variant)'.format(help_text),
+                           action='store_false')
+
+    # Add positive variant to the main parser or to the group as needed
     group.add_argument('--' + name, dest=name.replace('-', '_'), help=help_text, action='store_true')
-    group.add_argument('--no-' + name, dest=name.replace('-', '_'), help='{0} (negative variant)'.format(help_text),
-                       action='store_false')
     parser.set_defaults(**{name: default})
 
 
@@ -22,6 +26,8 @@ def parser_skeleton(*args, **kwargs):
                         help='Use output file instead of STDOUT',
                         metavar='FILE')
 
+    add_bool_arg(parser, 'rest', 'Run the REST server. This option supresses any input or output (see -i and -o)',
+                 has_negative_variant=False)
     add_bool_arg(parser, 'verbose', 'Show warnings')
     add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments')
 
