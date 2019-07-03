@@ -2,6 +2,7 @@
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
 import codecs
+from io import StringIO
 from itertools import chain
 from collections import defaultdict
 
@@ -165,16 +166,39 @@ class RESTapp(Resource):
         return RESTapp._make_json_response(json_text)
 
     def post(self, path):
-        conll_comments = request.form.get('conll_comments', self._conll_comments)
-        if 'file' not in request.files:
-            abort(400, 'ERROR: input file not found in request!')
+        """
+        Analyzes a chunk of text. It accepts either an input file::
 
-        inp_file = codecs.getreader('UTF-8')(request.files['file'])
+            requests.post('http://127.0.0.1:5000/tok/morph/pos',
+                          files={'file': open('tests/test_input/input.test',
+                                              encoding='UTF-8')})
+
+        , or text POSTed directly::
+
+            requests.post('http://127.0.0.1:5000/tok/morph/pos',
+                          data={'text': 'A kutya elment sétálni.'}) 
+
+        The first method takes priority over the second (i.e. it makes no sense
+        to specify both a file and a ``text``).
+        """
+        conll_comments = request.form.get('conll_comments', self._conll_comments)
+
+        if request.files:
+            if 'file' not in request.files:
+                abort(400, 'ERROR: input file not found in request!')
+
+            inp_file = codecs.getreader('UTF-8')(request.files['file'])
+        elif 'text' in request.form:
+            inp_file = StringIO(request.form['text'])
+        else:
+            abort(400, 'ERROR: no input.')
+
         required_tools = path.split('/')
         available_tools = self._init_tools(required_tools)  # Lazy or not...
 
         try:
-            last_prog = build_pipeline(inp_file, required_tools, available_tools, self._presets, conll_comments)
+            last_prog = build_pipeline(inp_file, required_tools, available_tools,
+                                       self._presets, conll_comments)
         except (HeaderError, ModuleError) as e:
             abort(400, e)
             last_prog = ()  # Silence, dummy IDE
