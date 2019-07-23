@@ -20,16 +20,14 @@ def parser_skeleton(*args, **kwargs):
     parser = ArgumentParser(*args, **kwargs)
     # Argparse magic: https://docs.python.org/dev/library/argparse.html#nargs
     parser.add_argument('-i', '--input', dest='input_stream', type=FileType(), default=sys.stdin,
-                        help='Use input file instead of STDIN',
+                        help='Use input file instead of STDIN (only allowed when at least one task is specified!)',
                         metavar='FILE')
     parser.add_argument('-o', '--output', dest='output_stream',  type=FileType('w'), default=sys.stdout,
-                        help='Use output file instead of STDOUT',
+                        help='Use output file instead of STDOUT (only allowed when at least one task is specified!)',
                         metavar='FILE')
 
-    add_bool_arg(parser, 'rest', 'Run the REST server. This option supresses any input or output (see -i and -o)',
-                 has_negative_variant=False)
     add_bool_arg(parser, 'verbose', 'Show warnings')
-    add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments')
+    add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments (lines starting with "# ")')
 
     parser.add_argument(dest='task', nargs=REMAINDER)
 

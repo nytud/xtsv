@@ -115,7 +115,7 @@ class RESTapp(Resource):
         Init REST API class
         :param internal_apps: pre-inicialised applications
         :param presets: pre-defined chains eg. from tokenisation to dependency parsing'
-        :param conll_comments: CoNLL-U-style comments (lines beginning with '#') before sentences
+        :param conll_comments: CoNLL-U-style comments (lines beginning with '# ') before sentences
         """
         self._internal_apps = internal_apps
         self._presets = presets

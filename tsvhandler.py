@@ -35,7 +35,7 @@ def process(stream, internal_app, conll_comments=False):
     :param stream: Line chunked input stream, one token per line (TSV) and emtpy lines as sentence separator,
      or free-format input for tokenisers
     :param internal_app: the initialised xtsv module class as module (type 2 by default)
-    :param conll_comments: Allow conll style comments (lines starting with '#') before sentences (default: false)
+    :param conll_comments: Allow conll style comments (lines starting with '# ') before sentences (default: false)
     :return: Iterator over the processed tokens (iterator of lists of features)
     """
     fixed_order_tsv_input = getattr(internal_app, 'fixed_order_tsv_input', False)
@@ -75,8 +75,8 @@ def sentence_iterator(input_stream, conll_comments=False):
     curr_comment = ''
     for line in input_stream:
         line = line.strip()
-        # Comment handling: Before sentence, line starts with # and comments are allowed by parameter
-        if len(curr_sen) == 0 and line.startswith('#') and conll_comments:
+        # Comment handling: Before sentence, line starts with '# ' and comments are allowed by parameter
+        if len(curr_sen) == 0 and line.startswith('# ') and conll_comments:
             curr_comment += '{0}\n'.format(line)  # Comment before sentence
         # Blank line handling
         elif len(line) == 0:
