@@ -38,7 +38,7 @@ def init_everything(available_tools, singleton_store=None):  # Init everything p
                         format(type(singleton_store)))
 
     for prog_name, prog_params in available_tools.items():  # prog_names are individual, prog_params can be the same!
-        prog, prog_args, prog_kwargs = prog_params
+        prog, friendly_name, prog_args, prog_kwargs = prog_params
         # Dealias aliases to find the initialized versions
         for inited_prog_name, curr_prog_params in currrent_alias_store[prog]:
             if curr_prog_params == prog_params:  # If prog_params match prog_name is an alias for inited_prog_name
