@@ -21,36 +21,9 @@ class ModuleError(ValueError):
     pass
 
 
-def init_everything(available_tools, singleton_store=None):  # Init everything properly
-    # Here we must challenge if any classpath or JAVA VM options are set to be able to throw the exception if needed
-    if jnius_config.classpath is not None or len(jnius_config.options) > 0:
-        import_pyjnius()
-    if singleton_store is None:
-        current_initialised_tools = {}
-        currrent_alias_store = defaultdict(list)
-    elif not isinstance(singleton_store, tuple) or len(singleton_store) != 2 or \
-            not isinstance(singleton_store[0], dict) or not isinstance(singleton_store[1], defaultdict) or \
-            not isinstance(singleton_store[1].default_factory, list):
-        current_initialised_tools = singleton_store[0]   # The singleton store
-        currrent_alias_store = singleton_store[1]
-    else:
-        raise TypeError('singleton_store is expected to be (dict, defaultdict(list) instead of {0}'.
-                        format(type(singleton_store)))
+def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comments=False, singleton_store=None):
+    current_initialised_tools = lazy_init_tools(used_tools, available_tools, presets, singleton_store)
 
-    for prog_name, prog_params in available_tools.items():  # prog_names are individual, prog_params can be the same!
-        prog, friendly_name, prog_args, prog_kwargs = prog_params
-        # Dealias aliases to find the initialized versions
-        for inited_prog_name, curr_prog_params in currrent_alias_store[prog]:
-            if curr_prog_params == prog_params:  # If prog_params match prog_name is an alias for inited_prog_name
-                current_initialised_tools[prog_name] = current_initialised_tools[inited_prog_name]
-                break
-        else:  # No initialized alias found... Initialize and store as initialized alias!
-            current_initialised_tools[prog_name] = prog(*prog_args, **prog_kwargs)  # Inint programs...
-            currrent_alias_store[prog].append((prog_name, prog_params))  # For lookup we need prog_name as well!
-    return current_initialised_tools
-
-
-def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comments=False):
     used_tools = resolve_presets(presets, used_tools)
 
     # Peek header...
@@ -67,7 +40,7 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
     pipeline_prod = pipeline_begin_prod
 
     for program in used_tools:
-        pr = available_tools.get(program)
+        pr = current_initialised_tools.get(program)
         if pr is not None:
             if not pr.source_fields.issubset(pipeline_prod):
                 raise ModuleError('ERROR: {0} module requires {1} columns but the previous module {2}'
@@ -82,7 +55,7 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
     return pipeline_end
 
 
-def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None):
+def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store):
     if available_tools is None:
         raise ValueError('No internal_app is given!')
 
@@ -97,16 +70,63 @@ def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_
 
 
 def singleton_store_factory():
-    """ Store already initialized tools for reuse without reinitialization (singleton store)
+    """ Store already initialised tools for reuse without reinitialization (singleton store)
          must explicitly pass it to init_everything() or pipeline_rest_api()
     """
     return {}, defaultdict(list)
 
 
+# From here, there are only private methods
 def resolve_presets(presets, used_tools):  # Resolve presets to module names to enable shorter URLs/task definitions...
     if len(used_tools) == 1 and used_tools[0] in presets:
         used_tools = presets[used_tools[0]]
     return used_tools
+
+
+def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
+    """ Resolve presets and initialise what is needed if it were not initialised before or not available """
+    # Sanity check params!
+    for app in available_tools.values():
+        if not isinstance(app, tuple):
+            raise TypeError('When using lazy initialisation internal_apps should be'
+                            ' the dict of the uninitialised tools!')
+
+    # Resolve presets to module names to init only the needed modules...
+    used_tools = set(resolve_presets(presets, used_tools))
+
+    # If there is preinitialised tool pool check the type, else create a new!
+    if singleton_store is None:
+        singleton_store = singleton_store_factory()
+    elif not isinstance(singleton_store, tuple) or len(singleton_store) != 2 or \
+            not isinstance(singleton_store[0], dict) or not isinstance(singleton_store[1], defaultdict) or \
+            not issubclass(singleton_store[1].default_factory, list):
+        raise ValueError('singleton_store  is expected to be the type of tuple(dict(), defaultdict(list))'
+                         ' instead of {0} !'.format(type(singleton_store)))
+
+    selected_tools = {k: v for k, v in available_tools.items() if k in used_tools}
+    # Init everything properly
+    # Here we must challenge if any classpath or JAVA VM options are set to be able to throw the exception if needed
+    if jnius_config.classpath is not None or len(jnius_config.options) > 0:
+        import_pyjnius()
+
+    current_initialised_tools = singleton_store[0]
+    currrent_alias_store = singleton_store[1]
+    for prog_name, prog_params in selected_tools.items():  # prog_names are individual, prog_params can be the same!
+        prog, friendly_name, prog_args, prog_kwargs = prog_params
+        # Dealias aliases to find the initialised versions
+        for inited_prog_name, curr_prog_params in currrent_alias_store[prog]:
+            if curr_prog_params == prog_params:  # If prog_params match prog_name is an alias for inited_prog_name
+                current_initialised_tools[prog_name] = current_initialised_tools[inited_prog_name]
+                break
+        else:  # No initialised alias found... Initialize and store as initialised alias!
+            inited_prog = prog(*prog_args, **prog_kwargs)  # Inint programs...
+            if (not hasattr(inited_prog, 'source_fields') or not isinstance(inited_prog.source_fields, set)) and \
+               (not hasattr(inited_prog, 'target_fields') or not isinstance(inited_prog.target_fields, list)):
+                raise ModuleError('Module named {0} has no source_fields or target_fields attributes'
+                                  ' or some of them has wrong type !'.format(prog_name))
+            current_initialised_tools[prog_name] = inited_prog
+            currrent_alias_store[prog].append((prog_name, prog_params))  # For lookup we need prog_name as well!
+    return current_initialised_tools
 
 
 class RESTapp(Resource):
@@ -116,36 +136,22 @@ class RESTapp(Resource):
         :param internal_apps: pre-inicialised applications
         :param presets: pre-defined chains eg. from tokenisation to dependency parsing'
         :param conll_comments: CoNLL-U-style comments (lines beginning with '#') before sentences
+        :param singleton_store: preinitialised tool pool, which mustbe defined externally,
+                or new is created on every call!
         """
         self._internal_apps = internal_apps
         self._presets = presets
         self._conll_comments = conll_comments
 
-        if singleton_store is not None:
-            for app in internal_apps.values():  # Sanity check params!
-                if not isinstance(app, tuple):
-                    raise TypeError('When using lazy initialisation internal_apps should be'
-                                    ' the dict of the uninitialised tools!')
-            self._singleton_store = singleton_store
-            self._init_tools = self._lazy_init
-        else:
-            self._init_tools = lambda _: self._internal_apps
+        self._singleton_store = singleton_store
         # atexit.register(self._internal_apps.__del__)  # For clean exit...
-
-    def _lazy_init(self, tools):
-        """ Resolve presets and initialise what is needed if it were not initialised before or not available """
-        tools = set(resolve_presets(self._presets, tools))
-        currently_used_tools = init_everything({k: v for k, v in self._internal_apps.items() if k in tools},
-                                               self._singleton_store)
-        return currently_used_tools
 
     def get(self, path=''):
         # fun/token
         fun, token = None, ''
         if '/' in path:
             fun, token = path.split('/', maxsplit=1)
-
-        curr_tools = self._init_tools([fun])  # Lazy or not...
+        curr_tools = lazy_init_tools([fun], self._internal_apps, self._presets, self._singleton_store)
         prog = getattr(curr_tools.get(fun), 'process_token', None)
 
         if len(path) == 0 or len(token) == 0 or prog is None:
@@ -171,10 +177,10 @@ class RESTapp(Resource):
 
         inp_file = codecs.getreader('UTF-8')(request.files['file'])
         required_tools = path.split('/')
-        available_tools = self._init_tools(required_tools)  # Lazy or not...
 
         try:
-            last_prog = build_pipeline(inp_file, required_tools, available_tools, self._presets, conll_comments)
+            last_prog = build_pipeline(inp_file, required_tools, self._internal_apps, self._presets, conll_comments,
+                                       self._singleton_store)
         except (HeaderError, ModuleError) as e:
             abort(400, e)
             last_prog = ()  # Silence, dummy IDE

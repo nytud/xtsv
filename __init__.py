@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
-from .pipeline import ModuleError, init_everything, build_pipeline, pipeline_rest_api, singleton_store_factory
+from .pipeline import ModuleError, build_pipeline, pipeline_rest_api, singleton_store_factory
 from .tsvhandler import HeaderError, process
 from .argparser import parser_skeleton, add_bool_arg
 
