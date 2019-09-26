@@ -3,7 +3,7 @@
 
 import codecs
 from itertools import chain
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 # import atexit
 
@@ -55,12 +55,14 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
     return pipeline_end
 
 
-def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store):
+# TODO: Wire out changes in: hunspellpyrest.py, emmorphrest.py
+def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None, form_title='xtsv pipeline',
+                      form_type='checkbox'):
     if available_tools is None:
         raise ValueError('No internal_app is given!')
 
     kwargs = {'internal_apps': available_tools, 'presets': presets, 'conll_comments': conll_comments,
-              'singleton_store': singleton_store}
+              'singleton_store': singleton_store, 'form_title': form_title, 'form_type': form_type}
 
     app = Flask(name)
     api = Api(app)
@@ -79,7 +81,7 @@ def singleton_store_factory():
 # From here, there are only private methods
 def resolve_presets(presets, used_tools):  # Resolve presets to module names to enable shorter URLs/task definitions...
     if len(used_tools) == 1 and used_tools[0] in presets:
-        used_tools = presets[used_tools[0]]
+        used_tools = presets[used_tools[0]][1]
     return used_tools
 
 
@@ -132,7 +134,163 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
 
 
 class RESTapp(Resource):
-    def __init__(self, internal_apps=None, presets=(), conll_comments=False, singleton_store=None):
+    _html_style = """<style>
+                body, html {
+                    width: 100%;
+                    height: 100%;
+                    margin: 0;
+                    padding: 0;
+                    display:table;
+                }
+                body {
+                    display:table-cell;
+                    vertical-align:middle;
+                }
+                form {
+                    display:table;  /* shrinks to fit conntent */
+                    margin:auto;
+                }
+            </style>"""
+
+    # str.replace() is used instead of str.format() because the many curly brackets!
+    _html_on_submit_form = """function OnSubmitForm() {
+                    var text = document.mainForm.inputText.value;
+
+                    if (text.length == 0) {
+                        alert('Input text should not be empty!');
+                        return false;
+                    }
+                    document.mainForm.submit.disabled = true;  // Prevent double submit!
+
+                    var url = 'BASE_URL_PLACEHOLDER';
+
+                    // Get all the checkboxes in order...
+                    var fields= document.mainForm.tools.getElementsByTagName('input');
+                    for(var i = 0; i < fields.length; ++i) {
+                        if(fields[i].checked) {
+                            // ...and append checked ones to the URL to get the proper tool list!
+                            url += '/' + fields[i].value;
+                        }
+                    }
+
+                    var xhr = new XMLHttpRequest;
+                    xhr.open('POST', url, true);
+                    var blob = new Blob([text], {type:'text/plain'});
+                    var data = new FormData();
+                    data.append('file', blob, 'input.txt');
+
+                    xhr.onreadystatechange = function() {
+                        if (this.readyState == 4) {             // When the response arrived...
+                            document.write(this.responseText);  // ...overwrite the whole document!
+                        };
+                    };
+                    xhr.send(data);
+                    return false; // Do not submit actually, as XMLHttpRequest already has done it...
+                }"""
+
+    # str.replace() is used instead of str.format() because the many curly brackets!
+    _html_w_presets = """function OnChangePreset() {
+                    var val = document.mainForm.presets.value;
+
+                    if (val == '') {
+                        return true;  // If None is selected, do nothing...
+                    }
+
+                    var preset2tools = {};
+
+                   PRESETS_PLACEHOLDER
+
+                    var currTools = preset2tools[val];
+
+                    // Get all the checkboxes in order...
+                    var fields = document.mainForm.tools.getElementsByTagName('input');
+                    for(var i = 0; i < fields.length; ++i) {
+                        // ...and set appropriate checked states.
+                        fields[i].checked = currTools.has(fields[i].name);
+                    }
+                }
+
+                function OnChangeCheckbBox() {
+                    document.mainForm.presets.value = '';
+                }"""
+
+    # str.format() is used to replace the dynamic parts
+    _presets_js_template = '                preset2tools[\'{0}\'] = new Set({1});'
+
+    # str.format() is used to replace the dynamic parts
+    _presets_html_template = '                   <option value="{0}">{1}</option>'
+
+    _html_wo_presets = """function OnChangeCheckbBox() {
+                }"""
+
+    # str.format() is used to replace the dynamic parts
+    _html_w_presets2 = """<p>
+                   <label for="presets">Available presets:</label><br/>
+                   <select name="presets" id="presets" onchange="OnChangePreset()">
+                       <option value="">None</option>
+                       {0}
+                   </select>
+               </p>"""
+
+    # str.format() is used to replace the dynamic parts
+    _html_main = """<!DOCTYPE html>
+    <html lang="en-US">
+
+        <head>
+            <meta charset="UTF-8">
+            <title>{0}</title>
+            {1}
+            <script>
+                {2}
+                {3}
+            </script>
+        </head>
+        <body>
+            <form name="mainForm" method="POST" onsubmit="return OnSubmitForm();" id="mainForm">
+               {4}
+               <p>
+                   <label for="tools">Available tools:</label><br/>
+                   <fieldset name="tools" id="tools" style="border: 0;">
+                       {5}
+                   </fieldset>
+               </p>
+               <p>
+                   <label for="inputText">Input text:</label><br/>
+                   <textarea autofocus rows="10" cols="80" placeholder="Enter text here..." form="mainForm"
+                    name="inputText" id="inputText"></textarea><br/>
+               </p>
+               <input type="submit" name="submit" value="Process">
+            </form>
+        </body>
+    </html>
+    """
+
+    # Replace: 'checkbox'|'radio', tool_name, friendly_name
+    _html_tool = '                            <input type="{0}" onchange="OnChangeCheckbBox()"  name="{1}" id="{1}" ' \
+                 'value="{1}"/><label for="{1}">{2}</label><br/>'
+
+    def gen_html_form(self, base_url):
+        if len(self._presets) > 0:
+            presets_js_cont = '\n'.join(self._presets_js_template.format(preset_name, str(tools_list[1]))
+                                        for preset_name, tools_list in self._presets.items()).lstrip()
+            presets_js_formatted = self._html_w_presets.replace('PRESETS_PLACEHOLDER', presets_js_cont)
+
+            presets_html_cont = '\n'.join(self._presets_html_template.format(preset_name, friendly_name)
+                                          for preset_name, (friendly_name, tools_list)
+                                          in self._presets.items()).lstrip()
+            presets_html_formatted = self._html_w_presets2.format(presets_html_cont)
+        else:
+            presets_js_formatted = self._html_wo_presets
+            presets_html_formatted = ''
+        html_tools = '\n'.join(self._html_tool.format(self._tools_type, tool_name, friendly_name)
+                               for tool_name, friendly_name in self._available_tools.items()).lstrip()
+        out_html = self._html_main.format(self._title, self._html_style,
+                                          self._html_on_submit_form.replace('BASE_URL_PLACEHOLDER', base_url),
+                                          presets_js_formatted, presets_html_formatted, html_tools)
+        return out_html
+
+    def __init__(self, internal_apps=None, presets=(), conll_comments=False, singleton_store=None,
+                 form_title='xtsv pipeline', form_type='checkbox'):
         """
         Init REST API class
         :param internal_apps: pre-inicialised applications
@@ -140,12 +298,24 @@ class RESTapp(Resource):
         :param conll_comments: CoNLL-U-style comments (lines beginning with '#') before sentences
         :param singleton_store: preinitialised tool pool, which mustbe defined externally,
                 or new is created on every call!
+        :param form_title: the title of the HTML form shown when URL opened in a browser
+        :param form_type: Some tools can be used as alternatives (e.g. different modes of emMorph),
+                some allow sequences to be defined
         """
         self._internal_apps = internal_apps
         self._presets = presets
         self._conll_comments = conll_comments
 
         self._singleton_store = singleton_store
+        self._title = form_title
+        if form_type not in {'checkbox', 'radio'}:
+            raise ValueError('form_type should be either \'checkbox\' or \'radio\' instead of {0}'.format(form_type))
+        if form_type == 'radio' and len(presets) != 0:
+            raise ValueError('Presets and radio buttons are mutually exclusive options!')
+        self._tools_type = form_type
+
+        # Dict of default tool names -> friendly names # TODO: OrderedDict is not necessary for >= Python 3.7!
+        self._available_tools = OrderedDict((names[0], tool_params[1]) for tool_params, names in internal_apps)
         # atexit.register(self._internal_apps.__del__)  # For clean exit...
 
     def get(self, path=''):
@@ -157,20 +327,14 @@ class RESTapp(Resource):
         prog = getattr(curr_tools.get(fun), 'process_token', None)
 
         if len(path) == 0 or len(token) == 0 or prog is None:
-            abort(400,
-                  'Usage: '
-                  'In Batch mode: HTTP POST /tool1/tool2/tool3 '
-                  'and input supplied as a file named as \'file\' in the appropriate format '
-                  '(see the documentation for details), '
-                  'In \'one word\' mode: HTTP GET /tool/word for processing the word \'word\' by tool individually '
-                  '(when the selected tool supports it). '
-                  'The following tool names are available: {0}. '
-                  'Further info: https://github.com/dlt-rilmta/xtsv'.
-                  format(', '.join(m for _, names in self._internal_apps for m in names)))
+            base_url = request.url_root.rstrip('/')  # FORM URL
+
+            out_html = self.gen_html_form(base_url)
+            return Response(out_html)
 
         json_text = json_dumps({token: prog(token)}, indent=2, sort_keys=True, ensure_ascii=False)
 
-        return RESTapp._make_json_response(json_text)
+        return self._make_json_response(json_text)
 
     def post(self, path):
         conll_comments = request.form.get('conll_comments', self._conll_comments)
@@ -187,7 +351,10 @@ class RESTapp(Resource):
             abort(400, e)
             last_prog = ()  # Silence, dummy IDE
 
-        return Response(stream_with_context((line.encode('UTF-8') for line in last_prog)), direct_passthrough=True)
+        # TODO: FORMAT as HTML if it will be viewed in browser...
+        #   See: https://bugs.chromium.org/p/chromium/issues/detail?id=106150
+        return Response(stream_with_context((line.encode('UTF-8') for line in last_prog)), direct_passthrough=True,
+                        content_type='text/plain; charset=utf-8')
 
     @staticmethod
     def _make_json_response(json_text, status=200):
