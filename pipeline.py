@@ -50,7 +50,7 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
             pipeline_prod |= set(pr.target_fields)
         else:
             raise ModuleError('ERROR: \'{0}\' module not found. Available modules: {1}'.
-                              format(program, sorted(available_tools.keys())))
+                              format(program, ','.join(m for _, names in available_tools for m in names)))
 
     return pipeline_end
 
@@ -86,7 +86,7 @@ def resolve_presets(presets, used_tools):  # Resolve presets to module names to 
 def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
     """ Resolve presets and initialise what is needed if it were not initialised before or not available """
     # Sanity check params!
-    for app in available_tools.values():
+    for app, _ in available_tools:
         if not isinstance(app, tuple):
             raise TypeError('When using lazy initialisation internal_apps should be'
                             ' the dict of the uninitialised tools!')
@@ -103,7 +103,7 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
         raise ValueError('singleton_store  is expected to be the type of tuple(dict(), defaultdict(list))'
                          ' instead of {0} !'.format(type(singleton_store)))
 
-    selected_tools = {k: v for k, v in available_tools.items() if k in used_tools}
+    selected_tools = [(k, v) for k, v in available_tools if len(used_tools.intersection(set(v)))]
     # Init everything properly
     # Here we must challenge if any classpath or JAVA VM options are set to be able to throw the exception if needed
     if jnius_config.classpath is not None or len(jnius_config.options) > 0:
@@ -111,21 +111,23 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
 
     current_initialised_tools = singleton_store[0]
     currrent_alias_store = singleton_store[1]
-    for prog_name, prog_params in selected_tools.items():  # prog_names are individual, prog_params can be the same!
+    for prog_params, prog_names in selected_tools:  # prog_names are individual, prog_params can be the same!
         prog, friendly_name, prog_args, prog_kwargs = prog_params
         # Dealias aliases to find the initialised versions
-        for inited_prog_name, curr_prog_params in currrent_alias_store[prog]:
-            if curr_prog_params == prog_params:  # If prog_params match prog_name is an alias for inited_prog_name
-                current_initialised_tools[prog_name] = current_initialised_tools[inited_prog_name]
+        for inited_prog_names, curr_prog_params in currrent_alias_store[prog]:
+            if curr_prog_params == prog_params:  # If prog_params match prog_name is an alias for inited_prog_names
+                for prog_name in prog_names:
+                    current_initialised_tools[prog_name] = current_initialised_tools[inited_prog_names[0]]
                 break
         else:  # No initialised alias found... Initialize and store as initialised alias!
             inited_prog = prog(*prog_args, **prog_kwargs)  # Inint programs...
             if (not hasattr(inited_prog, 'source_fields') or not isinstance(inited_prog.source_fields, set)) and \
                (not hasattr(inited_prog, 'target_fields') or not isinstance(inited_prog.target_fields, list)):
                 raise ModuleError('Module named {0} has no source_fields or target_fields attributes'
-                                  ' or some of them has wrong type !'.format(prog_name))
-            current_initialised_tools[prog_name] = inited_prog
-            currrent_alias_store[prog].append((prog_name, prog_params))  # For lookup we need prog_name as well!
+                                  ' or some of them has wrong type !'.format(','.join(prog_names)))
+            for prog_name in prog_names:
+                current_initialised_tools[prog_name] = inited_prog
+            currrent_alias_store[prog].append((prog_names, prog_params))  # For lookup we need prog_names as well!
     return current_initialised_tools
 
 
@@ -164,7 +166,7 @@ class RESTapp(Resource):
                   '(when the selected tool supports it). '
                   'The following tool names are available: {0}. '
                   'Further info: https://github.com/dlt-rilmta/xtsv'.
-                  format(', '.join(self._internal_apps.keys())))
+                  format(', '.join(m for _, names in self._internal_apps for m in names)))
 
         json_text = json_dumps({token: prog(token)}, indent=2, sort_keys=True, ensure_ascii=False)
 
