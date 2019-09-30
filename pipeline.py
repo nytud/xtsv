@@ -178,6 +178,7 @@ class RESTapp(Resource):
                     var blob = new Blob([text], {type:'text/plain'});
                     var data = new FormData();
                     data.append('file', blob, 'input.txt');
+                    data.append('toHTML', true);
 
                     xhr.onreadystatechange = function() {
                         if (this.readyState == 4) {             // When the response arrived...
@@ -269,6 +270,18 @@ class RESTapp(Resource):
     _html_tool = '                            <input type="{0}" onchange="OnChangeCheckbBox()"  name="{1}" id="{1}" ' \
                  'value="{1}"/><label for="{1}">{2}</label><br/>'
 
+    _html_table_header = b"""<html>
+    <head>
+        <style>
+            table, th, td {
+              border: 0px solid black; white-space: nowrap;
+            }
+        </style>
+    </head>
+    <body>
+        <table>
+"""
+
     def gen_html_form(self, base_url):
         if len(self._presets) > 0:
             presets_js_cont = '\n'.join(self._presets_js_template.format(preset_name, str(tools_list[1]))
@@ -337,6 +350,12 @@ class RESTapp(Resource):
         return self._make_json_response(json_text)
 
     def post(self, path):
+        tohtml = request.form.get('toHTML', False)
+        if tohtml:
+            final_convert = self._to_html
+        else:
+            final_convert = self._identity
+
         conll_comments = request.form.get('conll_comments', self._conll_comments)
         if 'file' not in request.files:
             abort(400, 'ERROR: input file not found in request!')
@@ -351,10 +370,8 @@ class RESTapp(Resource):
             abort(400, e)
             last_prog = ()  # Silence, dummy IDE
 
-        # TODO: FORMAT as HTML if it will be viewed in browser...
-        #   See: https://bugs.chromium.org/p/chromium/issues/detail?id=106150
-        return Response(stream_with_context((line.encode('UTF-8') for line in last_prog)), direct_passthrough=True,
-                        content_type='text/plain; charset=utf-8')
+        return Response(stream_with_context(final_convert((line.encode('UTF-8') for line in last_prog))),
+                        direct_passthrough=True, content_type='text/plain; charset=utf-8')
 
     @staticmethod
     def _make_json_response(json_text, status=200):
@@ -366,3 +383,24 @@ class RESTapp(Resource):
         response.headers['mimetype'] = 'application/json'
         response.status_code = status
         return response
+
+    @staticmethod
+    def _identity(x):
+        return x
+
+    def _to_html(self, input_iterator):
+        # begin the table
+        yield self._html_table_header
+
+        for line in input_iterator:
+            line = line.rstrip(b'\n')
+            yield b'<tr>\n'
+            for field in line.split(b'\t'):
+                yield b'\t<td>'
+                yield field.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').\
+                    replace(b'"', b'&quot;').replace(b'\'', b'&#x27;')
+                yield b'</td>'
+            yield b'</tr>\n'
+
+        # end the table
+        yield b'</table>\n</body>\n</html>\n'
