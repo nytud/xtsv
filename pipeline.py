@@ -139,16 +139,18 @@ class RESTapp(Resource):
                     width: 100%;
                     height: 100%;
                     margin: 0;
-                    padding: 0;
+                    padding: 10px;
                     display:table;
                 }
                 body {
                     display:table-cell;
                     vertical-align:middle;
                 }
-                form {
-                    display:table;  /* shrinks to fit conntent */
-                    margin:auto;
+                div {
+                    white-space: nowrap; /*Prevents Wrapping*/
+
+                    overflow-x: hidden;
+                    overflow-y: hidden;
                 }
             </style>"""
 
@@ -175,18 +177,53 @@ class RESTapp(Resource):
 
                     var xhr = new XMLHttpRequest;
                     xhr.open('POST', url, true);
-                    var blob = new Blob([text], {type:'text/plain'});
                     var data = new FormData();
-                    data.append('file', blob, 'input.txt');
-                    data.append('toHTML', true);
+
+                    if (document.mainForm.inputfile.files.length > 0) {
+                        var file = document.mainForm.inputfile.files[0]
+                        data.append('file', file, file.name);
+                    }
+                    else {
+                        var blob = new Blob([text], {type:'text/plain'});
+                        data.append('file', blob, 'input.txt');
+                    }
+                    if (document.mainForm.outputMode.value == 'display') {
+                        data.append('toHTML', true);
+                    }
+                    else {
+                        xhr.responseType = 'blob';
+                    }
 
                     xhr.onreadystatechange = function() {
                         if (this.readyState == 4) {             // When the response arrived...
-                            document.write(this.responseText);  // ...overwrite the whole document!
-                        };
+                            if (document.mainForm.outputMode.value == 'display') {
+                                document.getElementById('result').innerHTML = this.responseText;  // ...write result!
+                            }
+                            else {
+                                document.getElementById('result').innerHTML = '';  // Purge possible previous result 
+                                var blob = new Blob([this.response], { type: 'text/plain; charset=utf-8' });
+                                var link = document.createElement('a');  // Initiate download
+                                link.href = window.URL.createObjectURL(blob);
+                                link.download = 'output.txt';
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            }
+                            document.mainForm.submit.disabled = false;  // Reenable submit!
+                        }
                     };
                     xhr.send(data);
                     return false; // Do not submit actually, as XMLHttpRequest already has done it...
+                }
+                function OnChangeFile() {
+                    if (document.mainForm.inputfile.files.length > 0) {
+                        document.mainForm.inputText.value = '';
+                    }
+                }
+                function OnChangeTextarea() {
+                    if (document.mainForm.inputText.value.length > 0) {
+                        document.mainForm.inputfile.value = document.mainForm.inputfile.defaultValue;
+                    }
                 }"""
 
     # str.replace() is used instead of str.format() because the many curly brackets!
@@ -199,7 +236,7 @@ class RESTapp(Resource):
 
                     var preset2tools = {};
 
-                   PRESETS_PLACEHOLDER
+                    PRESETS_PLACEHOLDER
 
                     var currTools = preset2tools[val];
 
@@ -216,10 +253,10 @@ class RESTapp(Resource):
                 }"""
 
     # str.format() is used to replace the dynamic parts
-    _presets_js_template = '                preset2tools[\'{0}\'] = new Set({1});'
+    _presets_js_template = '                    preset2tools[\'{0}\'] = new Set({1});'
 
     # str.format() is used to replace the dynamic parts
-    _presets_html_template = '                   <option value="{0}">{1}</option>'
+    _presets_html_template = '                       <option value="{0}">{1}</option>'
 
     _html_wo_presets = """function OnChangeCheckbBox() {
                 }"""
@@ -256,12 +293,22 @@ class RESTapp(Resource):
                    </fieldset>
                </p>
                <p>
-                   <label for="inputText">Input text:</label><br/>
+                   <label for="inputText">Input text (file takes priority over textbox):</label><br/><br/>
+                   <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
                    <textarea autofocus rows="10" cols="80" placeholder="Enter text here..." form="mainForm"
-                    name="inputText" id="inputText"></textarea><br/>
+                    name="inputText" id="inputText" onchange="OnChangeTextarea()"></textarea><br/>
                </p>
-               <input type="submit" name="submit" value="Process">
+               <p>
+                   <label for="outputMode">Output mode:</label><br/>
+                   <select name="outputMode" id="outputMode">
+                       <option value="display">Display below</option>
+                       <option value="download">Download</option>
+                   </select><br/>
+               </p>
+               <input type="submit" name="submit" value="Process"><br/>
             </form>
+        <p>Result: </p>
+        <div id="result" name="result"></div>
         </body>
     </html>
     """
@@ -269,18 +316,6 @@ class RESTapp(Resource):
     # Replace: 'checkbox'|'radio', tool_name, friendly_name
     _html_tool = '                            <input type="{0}" onchange="OnChangeCheckbBox()"  name="{1}" id="{1}" ' \
                  'value="{1}"/><label for="{1}">{2}</label><br/>'
-
-    _html_table_header = b"""<html>
-    <head>
-        <style>
-            table, th, td {
-              border: 0px solid black; white-space: nowrap;
-            }
-        </style>
-    </head>
-    <body>
-        <table>
-"""
 
     def gen_html_form(self, base_url):
         if len(self._presets) > 0:
@@ -370,8 +405,11 @@ class RESTapp(Resource):
             abort(400, e)
             last_prog = ()  # Silence, dummy IDE
 
-        return Response(stream_with_context(final_convert((line.encode('UTF-8') for line in last_prog))),
-                        direct_passthrough=True, content_type='text/plain; charset=utf-8')
+        response = Response(stream_with_context(final_convert((line.encode('UTF-8') for line in last_prog))),
+                            direct_passthrough=True, content_type='text/plain; charset=utf-8')
+        if not tohtml:
+            response.headers.set('Content-Disposition', 'attachment', filename='output.txt')
+        return response
 
     @staticmethod
     def _make_json_response(json_text, status=200):
@@ -388,19 +426,9 @@ class RESTapp(Resource):
     def _identity(x):
         return x
 
-    def _to_html(self, input_iterator):
-        # begin the table
-        yield self._html_table_header
-
+    @staticmethod
+    def _to_html(input_iterator):
         for line in input_iterator:
-            line = line.rstrip(b'\n')
-            yield b'<tr>\n'
-            for field in line.split(b'\t'):
-                yield b'\t<td>'
-                yield field.replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').\
-                    replace(b'"', b'&quot;').replace(b'\'', b'&#x27;')
-                yield b'</td>'
-            yield b'</tr>\n'
-
-        # end the table
-        yield b'</table>\n</body>\n</html>\n'
+            yield line.rstrip(b'\n').replace(b'&', b'&amp;').replace(b'<', b'&lt;').replace(b'>', b'&gt;').\
+                replace(b'"', b'&quot;').replace(b'\'', b'&#x27;')
+            yield b'<br/>\n'
