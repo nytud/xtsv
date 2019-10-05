@@ -22,6 +22,7 @@ class ModuleError(ValueError):
 
 
 def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comments=False, singleton_store=None):
+    friendly_name_for_modules = {name: tool_params[1] for tool_params, names in available_tools for name in names}
     current_initialised_tools = lazy_init_tools(used_tools, available_tools, presets, singleton_store)
 
     used_tools = resolve_presets(presets, used_tools)
@@ -32,21 +33,25 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
     inp_stream = chain([header], inp_stream)
 
     pipeline_begin = inp_stream
-    pipeline_begin_friendly = 'HTTP POST/STDIN file'
+    pipeline_begin_friendly = 'Input Text'
     pipeline_begin_prod = set(header.strip().split('\t'))
 
     pipeline_end = pipeline_begin
     pipeline_end_friendly = pipeline_begin_friendly
     pipeline_prod = pipeline_begin_prod
 
-    for program in used_tools:
+    for i, program in enumerate(used_tools):
+        program_friendly = friendly_name_for_modules[program]
         pr = current_initialised_tools.get(program)
         if pr is not None:
+            if i == 0 and len(pr.source_fields) == 0:  # If first module expects raw text, there are no fields!
+                pipeline_prod = set()
             if not pr.source_fields.issubset(pipeline_prod):
-                raise ModuleError('ERROR: {0} module requires {1} columns but the previous module {2}'
-                                  ' has only {3} columns'.format(program, pr.source_fields, pipeline_prod,
-                                                                 pipeline_end_friendly))
+                raise ModuleError('ERROR: \'{0}\' module requires {1} fields but the previous module \'{2}\''
+                                  ' has only {3} fields!'.format(program_friendly, pr.source_fields,
+                                                                 pipeline_end_friendly, pipeline_prod))
             pipeline_end = process(pipeline_end, pr, conll_comments)
+            pipeline_end_friendly = program_friendly
             pipeline_prod |= set(pr.target_fields)
         else:
             raise ModuleError('ERROR: \'{0}\' module not found. Available modules: {1}'.
@@ -158,8 +163,8 @@ class RESTapp(Resource):
     _html_on_submit_form = """function OnSubmitForm() {
                     var text = document.mainForm.inputText.value;
 
-                    if (text.length == 0) {
-                        alert('Input text should not be empty!');
+                    if (text.length == 0 && document.mainForm.inputfile.files.length == 0) {
+                        alert('Input text or file should not be empty!');
                         return false;
                     }
                     document.mainForm.submit.disabled = true;  // Prevent double submit!
@@ -175,8 +180,6 @@ class RESTapp(Resource):
                         }
                     }
 
-                    var xhr = new XMLHttpRequest;
-                    xhr.open('POST', url, true);
                     var data = new FormData();
 
                     if (document.mainForm.inputfile.files.length > 0) {
@@ -190,29 +193,41 @@ class RESTapp(Resource):
                     if (document.mainForm.outputMode.value == 'display') {
                         data.append('toHTML', true);
                     }
-                    else {
-                        xhr.responseType = 'blob';
+
+                    function initDownload(blob) {
+                        var link = document.createElement('a');  // Initiate download
+                        link.href = window.URL.createObjectURL(blob);
+                        link.download = 'output.txt';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
                     }
 
-                    xhr.onreadystatechange = function() {
-                        if (this.readyState == 4) {             // When the response arrived...
-                            if (document.mainForm.outputMode.value == 'display') {
-                                document.getElementById('result').innerHTML = this.responseText;  // ...write result!
+                    function writeError(msg) {
+                        var div = document.createElement('div');
+                        div.innerHTML = msg.trim();
+                        var text =  div.getElementsByTagName('p')[0].innerHTML;
+                        document.getElementById('result').innerHTML = text;
+                    }
+
+                    var fetchHandle = function(response) {
+                        if (response.ok) {
+                            if (document.mainForm.outputMode.value == 'display') {  // ...write result!
+                                response.text().then(text => document.getElementById('result').innerHTML = text)
                             }
                             else {
                                 document.getElementById('result').innerHTML = '';  // Purge possible previous result 
-                                var blob = new Blob([this.response], { type: 'text/plain; charset=utf-8' });
-                                var link = document.createElement('a');  // Initiate download
-                                link.href = window.URL.createObjectURL(blob);
-                                link.download = 'output.txt';
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
+                                response.blob().then(resp => initDownload(resp));
                             }
-                            document.mainForm.submit.disabled = false;  // Reenable submit!
                         }
+                        else {
+                            response.text().then(writeError);
+                        }
+            
+                        document.mainForm.submit.disabled = false;  // Reenable submit!
                     };
-                    xhr.send(data);
+                    var params = {method: 'POST', credentials: 'include', body: data};
+                    fetch(url, params).then(fetchHandle).catch(fetchHandle);
                     return false; // Do not submit actually, as XMLHttpRequest already has done it...
                 }
                 function OnChangeFile() {
