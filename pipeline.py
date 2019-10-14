@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
+import importlib
 import codecs
 from itertools import chain
 from collections import defaultdict, OrderedDict
@@ -97,6 +98,11 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
         if not isinstance(app, tuple):
             raise TypeError('When using lazy initialisation internal_apps should be'
                             ' the dict of the uninitialised tools!')
+        module, prog, friendly_name, prog_args, prog_kwargs = app
+        try:
+            importlib.import_module(module), prog   # Silently import everything for the JAVA CLASSPATH...
+        except ModuleNotFoundError:
+            pass
 
     # Resolve presets to module names to init only the needed modules...
     used_tools = set(resolve_presets(presets, used_tools))
@@ -119,7 +125,7 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
     current_initialised_tools = singleton_store[0]
     currrent_alias_store = singleton_store[1]
     for prog_params, prog_names in selected_tools:  # prog_names are individual, prog_params can be the same!
-        prog, friendly_name, prog_args, prog_kwargs = prog_params
+        module, prog, friendly_name, prog_args, prog_kwargs = prog_params
         # Dealias aliases to find the initialised versions
         for inited_prog_names, curr_prog_params in currrent_alias_store[prog]:
             if curr_prog_params == prog_params:  # If prog_params match prog_name is an alias for inited_prog_names
@@ -127,7 +133,8 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
                     current_initialised_tools[prog_name] = current_initialised_tools[inited_prog_names[0]]
                 break
         else:  # No initialised alias found... Initialize and store as initialised alias!
-            inited_prog = prog(*prog_args, **prog_kwargs)  # Inint programs...
+            prog_imp = getattr(importlib.import_module(module), prog)
+            inited_prog = prog_imp(*prog_args, **prog_kwargs)  # Inint programs...
             if (not hasattr(inited_prog, 'source_fields') or not isinstance(inited_prog.source_fields, set)) and \
                (not hasattr(inited_prog, 'target_fields') or not isinstance(inited_prog.target_fields, list)):
                 raise ModuleError('Module named {0} has no source_fields or target_fields attributes'
@@ -378,7 +385,7 @@ class RESTapp(Resource):
         self._tools_type = form_type
 
         # Dict of default tool names -> friendly names # TODO: OrderedDict is not necessary for >= Python 3.7!
-        self._available_tools = OrderedDict((names[0], tool_params[1]) for tool_params, names in internal_apps)
+        self._available_tools = OrderedDict((names[0], tool_params[2]) for tool_params, names in internal_apps)
         # atexit.register(self._internal_apps.__del__)  # For clean exit...
 
     def get(self, path=''):
