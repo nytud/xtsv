@@ -63,12 +63,13 @@ def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comme
 
 # TODO: Wire out changes in: hunspellpyrest.py, emmorphrest.py
 def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None, form_title='xtsv pipeline',
-                      form_type='checkbox'):
+                      form_type='checkbox', doc_link=''):
     if available_tools is None:
         raise ValueError('No internal_app is given!')
 
     kwargs = {'internal_apps': available_tools, 'presets': presets, 'conll_comments': conll_comments,
-              'singleton_store': singleton_store, 'form_title': form_title, 'form_type': form_type}
+              'singleton_store': singleton_store, 'form_title': form_title, 'form_type': form_type,
+              'doc_link': doc_link}
 
     app = Flask(name)
     api = Api(app)
@@ -309,13 +310,14 @@ class RESTapp(Resource):
             <form name="mainForm" method="POST" onsubmit="return OnSubmitForm();" id="mainForm">
                {4}
                <p>
-                   <label for="tools">Available tools:</label><br/>
+                   <label for="tools">
+                   Available tools (see <a href="{5}">documentation</a> for more details on usage):</label><br/>
                    <fieldset name="tools" id="tools" style="border: 0;">
-                       {5}
+                       {6}
                    </fieldset>
                </p>
                <p>
-                   <label for="inputText">Input text (file takes priority over textbox):</label><br/><br/>
+                   <label for="inputText">Input text or file:</label><br/><br/>
                    <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
                    <textarea autofocus rows="10" cols="80" placeholder="Enter text here..." form="mainForm"
                     name="inputText" id="inputText" onchange="OnChangeTextarea()"></textarea><br/>
@@ -356,11 +358,11 @@ class RESTapp(Resource):
                                for tool_name, friendly_name in self._available_tools.items()).lstrip()
         out_html = self._html_main.format(self._title, self._html_style,
                                           self._html_on_submit_form.replace('BASE_URL_PLACEHOLDER', base_url),
-                                          presets_js_formatted, presets_html_formatted, html_tools)
+                                          presets_js_formatted, presets_html_formatted, self._doc_link, html_tools)
         return out_html
 
     def __init__(self, internal_apps=None, presets=(), conll_comments=False, singleton_store=None,
-                 form_title='xtsv pipeline', form_type='checkbox'):
+                 form_title='xtsv pipeline', form_type='checkbox', doc_link=''):
         """
         Init REST API class
         :param internal_apps: pre-inicialised applications
@@ -371,6 +373,7 @@ class RESTapp(Resource):
         :param form_title: the title of the HTML form shown when URL opened in a browser
         :param form_type: Some tools can be used as alternatives (e.g. different modes of emMorph),
                 some allow sequences to be defined
+        :param doc_link: A link to documentation on usage for helping newbies
         """
         self._internal_apps = internal_apps
         self._presets = presets
@@ -383,6 +386,8 @@ class RESTapp(Resource):
         if form_type == 'radio' and len(presets) != 0:
             raise ValueError('Presets and radio buttons are mutually exclusive options!')
         self._tools_type = form_type
+
+        self._doc_link = doc_link
 
         # Dict of default tool names -> friendly names # TODO: OrderedDict is not necessary for >= Python 3.7!
         self._available_tools = OrderedDict((names[0], tool_params[2]) for tool_params, names in internal_apps)
