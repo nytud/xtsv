@@ -75,8 +75,9 @@ def sentence_iterator(input_stream, conll_comments=False):
     curr_comment = ''
     for line in input_stream:
         line = line.strip()
-        # Comment handling: Before sentence, line starts with # and comments are allowed by parameter
-        if len(curr_sen) == 0 and line.startswith('#') and conll_comments:
+        # Comment handling: Before sentence, line starts with '# ' and comments are allowed by parameter
+        # (this allows #tags at the beginning of the sentence commonly used in social mediat)
+        if len(curr_sen) == 0 and line.startswith('# ') and conll_comments:
             curr_comment += '{0}\n'.format(line)  # Comment before sentence
         # Blank line handling
         elif len(line) == 0:
