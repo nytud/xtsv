@@ -1,5 +1,5 @@
 import sys
-from argparse import ArgumentParser, FileType, REMAINDER
+from argparse import ArgumentParser, FileType
 
 
 def add_bool_arg(parser, name, help_text, default=False, has_negative_variant=True):
@@ -19,9 +19,13 @@ def add_bool_arg(parser, name, help_text, default=False, has_negative_variant=Tr
 def parser_skeleton(*args, **kwargs):
     parser = ArgumentParser(*args, **kwargs)
     # Argparse magic: https://docs.python.org/dev/library/argparse.html#nargs
-    parser.add_argument('-i', '--input', dest='input_stream', type=FileType(), default=sys.stdin,
-                        help='Use input file instead of STDIN (only allowed when at least one task is specified!)',
-                        metavar='FILE')
+    input_group = parser.add_mutually_exclusive_group()
+    input_group.add_argument('-i', '--input', dest='input_stream', type=FileType(), default=sys.stdin,
+                             help='Use input file instead of --text or STDIN '
+                                  '(only allowed when at least one task is specified!)', metavar='FILE')
+    input_group.add_argument('-t', '--text', dest='input_text',  type=str, default=None,
+                             help='Use input text instead of file or STDIN '
+                                  '(only allowed when at least one task is specified!)', metavar='TEXT')
     parser.add_argument('-o', '--output', dest='output_stream',  type=FileType('w'), default=sys.stdout,
                         help='Use output file instead of STDOUT (only allowed when at least one task is specified!)',
                         metavar='FILE')
@@ -29,6 +33,6 @@ def parser_skeleton(*args, **kwargs):
     add_bool_arg(parser, 'verbose', 'Show warnings')
     add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments')
 
-    parser.add_argument(dest='task', nargs=REMAINDER)
+    parser.add_argument(dest='task', nargs=1)
 
     return parser

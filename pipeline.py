@@ -4,7 +4,7 @@
 import importlib
 import codecs
 from itertools import chain
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, OrderedDict, abc
 
 # import atexit
 
@@ -22,11 +22,18 @@ class ModuleError(ValueError):
     pass
 
 
-def build_pipeline(inp_stream, used_tools, available_tools, presets, conll_comments=False, singleton_store=None):
+def build_pipeline(input_data, used_tools, available_tools, presets, conll_comments=False, singleton_store=None):
     friendly_name_for_modules = {name: tool_params[1] for tool_params, names in available_tools for name in names}
     current_initialised_tools = lazy_init_tools(used_tools, available_tools, presets, singleton_store)
 
     used_tools = resolve_presets(presets, used_tools)
+
+    if isinstance(input_data, str):
+        inp_stream = iter([input_data])
+    elif isinstance(input_data, abc.Iterable):
+        inp_stream = input_data
+    else:
+        raise ValueError('The input should be string or iterable!')
 
     # Peek header...
     header = next(inp_stream)
@@ -419,14 +426,19 @@ class RESTapp(Resource):
             final_convert = self._identity
 
         conll_comments = request.form.get('conll_comments', self._conll_comments)
-        if 'file' not in request.files:
-            abort(400, 'ERROR: input file not found in request!')
+        input_text = request.form.get('text')
+        if 'file' in request.files and input_text is None:
+            inp_data = codecs.getreader('UTF-8')(request.files['file'])
+        elif 'file' not in request.files and input_text is not None:
+            inp_data = input_text
+        else:
+            abort(400, 'ERROR: input text or file (mutually exclusive) not found in request!')
+            inp_data = None  # Silence dummy IDE
 
-        inp_file = codecs.getreader('UTF-8')(request.files['file'])
         required_tools = path.split('/')
 
         try:
-            last_prog = build_pipeline(inp_file, required_tools, self._internal_apps, self._presets, conll_comments,
+            last_prog = build_pipeline(inp_data, required_tools, self._internal_apps, self._presets, conll_comments,
                                        self._singleton_store)
         except (HeaderError, ModuleError) as e:
             abort(400, e)
