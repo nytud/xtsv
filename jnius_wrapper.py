@@ -14,6 +14,7 @@ class DummyJniusConfig:
     classpath_show_warning = True
     options = []
     classpath = None
+    vm_running = False
 
     @staticmethod
     def set_options(*_):
