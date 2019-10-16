@@ -68,7 +68,6 @@ def build_pipeline(input_data, used_tools, available_tools, presets, conll_comme
     return pipeline_end
 
 
-# TODO: Wire out changes in: hunspellpyrest.py, emmorphrest.py
 def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None, form_title='xtsv pipeline',
                       form_type='checkbox', doc_link=''):
     if available_tools is None:
@@ -178,35 +177,49 @@ class RESTapp(Resource):
     _html_on_submit_form = """function OnSubmitForm() {
                     var text = document.mainForm.inputText.value;
 
-                    if (text.length == 0 && document.mainForm.inputfile.files.length == 0) {
-                        alert('Input text or file should not be empty!');
+                    if (text.length == 0 && (document.mainForm.getElementsByClassName('inputfile').length == 0 ||
+                        document.mainForm.inputfile.files.length == 0)) {
+                        alert('Input is empty!');
                         return false;
                     }
-                    document.mainForm.submit.disabled = true;  // Prevent double submit!
 
                     var url = 'BASE_URL_PLACEHOLDER';
 
+                    var none_are_checked = true;
                     // Get all the checkboxes in order...
-                    var fields= document.mainForm.tools.getElementsByTagName('input');
+                    var fields = document.mainForm.tools.getElementsByTagName('input');
                     for(var i = 0; i < fields.length; ++i) {
                         if(fields[i].checked) {
                             // ...and append checked ones to the URL to get the proper tool list!
                             url += '/' + fields[i].value;
+                            none_are_checked = false;
                         }
                     }
 
-                    var data = new FormData();
+                    if (none_are_checked) {
+                        alert('At least one tool must be selected!');
+                        return false;
+                    }
 
-                    if (document.mainForm.inputfile.files.length > 0) {
-                        var file = document.mainForm.inputfile.files[0]
-                        data.append('file', file, file.name);
+                    document.mainForm.submit.disabled = true;  // Prevent double submit!
+
+                    if (fields[0].type != 'radio') {
+                        var data = new FormData();
+
+                        if (document.mainForm.inputfile.files.length > 0) {
+                            var file = document.mainForm.inputfile.files[0]
+                            data.append('file', file, file.name);
+                        }
+                        else {
+                            var blob = new Blob([text], {type:'text/plain'});
+                            data.append('file', blob, 'input.txt');
+                        }
+                        if (document.mainForm.outputMode.value == 'display') {
+                            data.append('toHTML', true);
+                        }
                     }
                     else {
-                        var blob = new Blob([text], {type:'text/plain'});
-                        data.append('file', blob, 'input.txt');
-                    }
-                    if (document.mainForm.outputMode.value == 'display') {
-                        data.append('toHTML', true);
+                        url += '/' + text;
                     }
 
                     function initDownload(blob) {
@@ -225,10 +238,21 @@ class RESTapp(Resource):
                         document.getElementById('result').innerHTML = text;
                     }
 
+                    function pprint(text) {
+                        if (fields[0].type != 'radio') {
+                            return text;
+                        }
+                        else {
+                            return '<pre>' + text + '</pre>';
+                        }
+                    }
+
                     var fetchHandle = function(response) {
                         if (response.ok) {
-                            if (document.mainForm.outputMode.value == 'display') {  // ...write result!
-                                response.text().then(text => document.getElementById('result').innerHTML = text)
+                            if (document.mainForm.getElementsByClassName('outputMode').length == 0 || 
+                                document.mainForm.outputMode.value == 'display') {  // ...write result!
+                                response.text().then(text =>
+                                                     document.getElementById('result').innerHTML = pprint(text));
                             }
                             else {
                                 document.getElementById('result').innerHTML = '';  // Purge possible previous result 
@@ -241,9 +265,14 @@ class RESTapp(Resource):
             
                         document.mainForm.submit.disabled = false;  // Reenable submit!
                     };
-                    var params = {method: 'POST', credentials: 'include', body: data};
+                    if (fields[0].type != 'radio') {
+                        var params = {method: 'POST', credentials: 'include', body: data};
+                    }
+                    else {
+                        var params = {method: 'GET', credentials: 'include'};
+                    }
                     fetch(url, params).then(fetchHandle).catch(fetchHandle);
-                    return false; // Do not submit actually, as XMLHttpRequest already has done it...
+                    return false; // Do not submit actually, as fetch has already done it...
                 }
                 function OnChangeFile() {
                     if (document.mainForm.inputfile.files.length > 0) {
@@ -324,18 +353,9 @@ class RESTapp(Resource):
                    </fieldset>
                </p>
                <p>
-                   <label for="inputText">Input text or file:</label><br/><br/>
-                   <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
-                   <textarea autofocus rows="10" cols="80" placeholder="Enter text here..." form="mainForm"
-                    name="inputText" id="inputText" onchange="OnChangeTextarea()"></textarea><br/>
+                   {7}
                </p>
-               <p>
-                   <label for="outputMode">Output mode:</label><br/>
-                   <select name="outputMode" id="outputMode">
-                       <option value="display">Display below</option>
-                       <option value="download">Download</option>
-                   </select><br/>
-               </p>
+               {9}
                <input type="submit" name="submit" value="Process"><br/>
             </form>
         <p>Result: </p>
@@ -344,9 +364,25 @@ class RESTapp(Resource):
     </html>
     """
 
+    _text_or_file = """<label for="inputText">Input text or file:</label><br/><br/>
+                   <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
+                   <textarea autofocus rows="10" cols="80" placeholder="Enter text here..." form="mainForm"
+                    name="inputText" id="inputText" {8}></textarea><br/>"""
+    _text_or_file_radio = """<label for="inputText">Input word:</label><br/><br/>
+                       <input type="text" name="inputText" id="inputText" placeholder="Enter word here..." />"""
+
+    _text_or_file2 = 'onchange="OnChangeTextarea()"'
+    _text_or_file3 = """<p>
+                   <label for="outputMode">Output mode:</label><br/>
+                   <select name="outputMode" id="outputMode">
+                       <option value="display">Display below</option>
+                       <option value="download">Download</option>
+                   </select><br/>
+               </p>"""
+
     # Replace: 'checkbox'|'radio', tool_name, friendly_name
-    _html_tool = '                            <input type="{0}" onchange="OnChangeCheckbBox()"  name="{1}" id="{1}" ' \
-                 'value="{1}"/><label for="{1}">{2}</label><br/>'
+    _html_tool = '                       <input type="{0}" {3}name="availableTools" id="{1}" value="{1}"/>' \
+                 '<label for="{1}">{2}</label><br/>'
 
     def gen_html_form(self, base_url):
         if len(self._presets) > 0:
@@ -361,11 +397,22 @@ class RESTapp(Resource):
         else:
             presets_js_formatted = self._html_wo_presets
             presets_html_formatted = ''
-        html_tools = '\n'.join(self._html_tool.format(self._tools_type, tool_name, friendly_name)
+        if self._tools_type == 'radio':
+            text_or_file = self._text_or_file_radio
+            text_or_file2 = ''
+            text_or_file3 = ''
+            on_change = ''
+        else:
+            text_or_file = self._text_or_file
+            text_or_file2 = self._text_or_file2
+            text_or_file3 = self._text_or_file3
+            on_change = 'onchange="OnChangeCheckbBox()" '
+        html_tools = '\n'.join(self._html_tool.format(self._tools_type, tool_name, friendly_name, on_change)
                                for tool_name, friendly_name in self._available_tools.items()).lstrip()
         out_html = self._html_main.format(self._title, self._html_style,
                                           self._html_on_submit_form.replace('BASE_URL_PLACEHOLDER', base_url),
-                                          presets_js_formatted, presets_html_formatted, self._doc_link, html_tools)
+                                          presets_js_formatted, presets_html_formatted, self._doc_link, html_tools,
+                                          text_or_file, text_or_file2, text_or_file3)
         return out_html
 
     def __init__(self, internal_apps=None, presets=(), conll_comments=False, singleton_store=None,

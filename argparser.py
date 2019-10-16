@@ -33,6 +33,6 @@ def parser_skeleton(*args, **kwargs):
     add_bool_arg(parser, 'verbose', 'Show warnings')
     add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments')
 
-    parser.add_argument(dest='task', nargs=1)
+    parser.add_argument(dest='task', nargs='?', default=())
 
     return parser
