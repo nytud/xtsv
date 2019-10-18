@@ -36,7 +36,8 @@ def process(stream, internal_app, conll_comments=False):
     :param stream: Line chunked input stream, one token per line (TSV) and emtpy lines as sentence separator,
      or free-format input for tokenisers
     :param internal_app: the initialised xtsv module class as module (type 2 by default)
-    :param conll_comments: Allow conll style comments (lines starting with '#') before sentences (default: false)
+    :param conll_comments: Allow conll style comments (lines starting with '# ') before sentences
+     (this allows #tags at the beginning of the sentence commonly used in social mediat) (default: false)
     :return: Iterator over the processed tokens (iterator of lists of features)
     """
     track_stream = {'file_name': getattr(stream, 'name', 'no filename for stream'), 'curr_line_number': 0}

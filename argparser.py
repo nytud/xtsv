@@ -31,7 +31,7 @@ def parser_skeleton(*args, **kwargs):
                         metavar='FILE')
 
     add_bool_arg(parser, 'verbose', 'Show warnings')
-    add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments')
+    add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments (lines starting with "# ")')
 
     parser.add_argument(dest='task', nargs='?', default=())
 

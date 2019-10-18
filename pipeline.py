@@ -421,7 +421,7 @@ class RESTapp(Resource):
         Init REST API class
         :param internal_apps: pre-inicialised applications
         :param presets: pre-defined chains eg. from tokenisation to dependency parsing'
-        :param conll_comments: CoNLL-U-style comments (lines beginning with '#') before sentences
+        :param conll_comments: CoNLL-U-style comments (lines beginning with '# ') before sentences
         :param singleton_store: preinitialised tool pool, which mustbe defined externally,
                 or new is created on every call!
         :param form_title: the title of the HTML form shown when URL opened in a browser
