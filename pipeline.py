@@ -303,7 +303,7 @@ class RESTapp(Resource):
                     var fields = document.mainForm.tools.getElementsByTagName('input');
                     for(var i = 0; i < fields.length; ++i) {
                         // ...and set appropriate checked states.
-                        fields[i].checked = currTools.has(fields[i].name);
+                        fields[i].checked = currTools.has(fields[i].value);
                     }
                 }
 

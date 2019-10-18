@@ -8,7 +8,7 @@
 - easy to use command-line interface
 - convenient REST API with simple web frontend
 - Python library API
-- Can be turned into a docker image, and runnable docker form
+- Can be turned into a docker image and runnable docker form
 
 If a bug is found please leave feedback with the exact details.
 
@@ -16,7 +16,7 @@ If a bug is found please leave feedback with the exact details.
 
 ``xtsv`` is licensed under the LGPL 3.0 license. The submodules have their own license.
 
-We are curently preparing a paper which should be cited, when `xtsv` is used.
+We are currently working on a paper which should be cited when `xtsv` is used.
 
 ## Requirements
 
@@ -25,12 +25,12 @@ We are curently preparing a paper which should be cited, when `xtsv` is used.
 
 ## API documentation
 
-- `ModuleError`: The exception throwed when something bad happened with the modules (eg. Module could not be found or the ordering of the modules is not feasible because the required and supplied fields)
-- `HeaderError`: The exception throwed when the input could not satisfy the required fields in its header
+- `ModuleError`: The exception thrown when something bad happened to the modules (e.g. the module could not be found or the ordering of the modules is not feasible because of the required and supplied fields)
+- `HeaderError`: The exception thrown when the input could not satisfy the required fields in its header
 - `jnius_config`: Set JAVA VM options and CLASSPATH for the PyJNIus library
 - `build_pipeline(inp_data, used_tools, available_tools, presets, conll_comments=False) -> iterator_on_output_lines`: Build the current pipeline from the input data (stream, iterable or string), the list of the elements of the desired pipeline chosen from the available tools and presets returning an output iterator
-- `pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None, form_title, doc_link) -> app`: Creates a Flask application with the REST API and web frontend on the available initialised tools and presets with the desired name. Run with a wsgi server or Flask's built-in server with with `app.run()` (see [REST API section](#REST-API))
-- `singleton_store_factory() -> singleton`: Singletons can used for initialisation of modules (eg. when the application is restarted frequently and not all modules are used between restarts)
+- `pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None, form_title, doc_link) -> app`: Create a Flask application with the REST API and web frontend on the available initialised tools and presets with the desired name. Run with a wsgi server or Flask's built-in server with with `app.run()` (see [REST API section](#REST-API))
+- `singleton_store_factory() -> singleton`: Singletons can be used for initialisation of modules (eg. when the application is restarted frequently and not all modules are used between restarts)
 - `process(stream, initialised_app, conll_comments=False) -> iterator_on_output_lines`: A low-level API to run a specific member of the pipeline on a specific input stream, returning an output iterator
 - `parser_skeleton(...) -> argparse.ArgumentParser(...)`: A CLI argument parser skeleton can be further customized when needed
 - `add_bool_arg(parser, name, help_text, default=False, has_negative_variant=True)`: A helper function to easily add BOOL arguments to the ArgumentParser class
@@ -50,14 +50,14 @@ The input and output can be one of the following:
 - TSV file with fixed column order and without header (like CoNLL-U)
 - TSV file with arbitrary column order where the columns are identified by the TSV header (main format of `xtsv`)
 
-The TSV files are formated as follows (closely resembling the CoNLL-U, vertical format):
-- The first line is the __header__ (when the column order is not fixed therefore the next module identifies columns by their names)
+The TSV files are formatted as follows (closely resembling the CoNLL-U, vertical format):
+- The first line is the __header__ (when the column order is not fixed, therefore the next module identifies columns by their names)
 - Columns are separated by TAB characters
-- One token per line (one column), the other columns contain the information (stem, POS-tag, etc.) on that individual token
+- One token per line (one column), the other columns contain the information (stem, POS-tag, etc.) of that individual token
 - Sentences are separated by emtpy lines
-- If allowed by settings, zero or more comment lines (eg. lines starts with hashtag and space) immediately preceedes sentences
+- If allowed by settings, zero or more comment lines (e.g. lines starting with hashtag and space) immediately precede the sentences
 
-The fields (represented by TSV columns) are identified by the header in the first line of the input. Each module can (but not necessarily) define:
+The fields (represented by TSV columns) are identified by the header in the first line of the input. Each module can (but does not necessarily have to) define:
 - A set of source fields which is required to present in the input
 - A list of target fields which are to be generated to the output in order
     - Newly generated fields are started from the right of the rightmost column, the existing columns _should_ not be modified at all
@@ -76,7 +76,7 @@ The following requirements apply for a new module:
 
 1) It must provide (at least) the mandatory API (see [emDummy](https://github.com/dlt-rilmta/emdummy) for a well-documented example)
 2) It must conform to the (to be defined) field-name conventions and the format conventions
-3) It must have an LGPL 3.0 compatible lisence
+3) It must have an LGPL 3.0 compatible license
 
 The following steps are needed to insert the new module into the pipeline:
 
@@ -108,7 +108,7 @@ The following steps are needed to insert the new module into the pipeline:
 
 Here we present the usage scenarios.
 <br/>
-To extend the toolchain with new modules [just add new modules to `config.py`](#creating-a-module-that-can-be-used-with-xtsv).
+To extend the toolchain with new modules, [just add new modules to `config.py`](#creating-a-module-that-can-be-used-with-xtsv).
 
 Some examples of the realised applications:
 
@@ -123,7 +123,7 @@ Some examples of the realised applications:
     ```bash
     echo "Input text." | python3 ./main.py modules,separated,by,comas
     ```
-- Each modules _glued together_ with the _standard *nix pipelines_ __where user can interact with the data__ between the modules:
+- Modules _glued together_ one by one with the _standard *nix pipelines_ __where users can interact with the data__ between the modules:
      ```bash
      echo "Input text." | \
         python3 main.py module | \
@@ -131,7 +131,7 @@ Some examples of the realised applications:
         python3 main.py by | \
         python3 main.py comas
      ```
-- Independently from the other options `xtsv` can also used with input or output streams redirected or with string input (also applies to the runnabble docker form):
+- Independently from the other options, `xtsv` can also be used with input or output streams redirected or with string input (this applies to the runnable docker form as well):
     ```bash
     python3 ./main.py modules,separated,by,comas -i input.txt -o output.txt
     python3 ./main.py modules,separated,by,comas --text "Input text."
@@ -155,7 +155,7 @@ With the appropriate Dockerfile `xtsv` can be used as follows:
 Server:
 - Docker image ([see above](#docker-image))
 - Any wsgi server (`uwsgi`, `gunicorn`, `waitress`, etc.) can be configured to run with a prepared wsgi file .
-- Debug server (Flask) __only for development (single threaded, one request a time)__:
+- Debug server (Flask) __only for development (single threaded, one request at a time)__:
 
     When the server outputs a message like `* Running on` then it is ready to accept requests on http://127.0.0.1:5000 .
     (__We do not recommend using this method in production as it is built atop of Flask debug server! Please consider using the Docker image for REST API in production!__)
@@ -180,7 +180,7 @@ Client:
     >>> print(r.text)
     ...
     ```
-    The server checks whether the module order is feasible, and gives an error message if there are any problems.
+    The server checks whether the module order is feasible, and returns an error message if there are any problems.
 
 ### As Python Library
 
