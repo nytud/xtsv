@@ -62,14 +62,14 @@ def import_pyjnius():
     # Check if autoclass is already imported...
     if not jnius_config.vm_running:
 
-        # Tested on Ubuntu 16.04 64bit with openjdk-8 JDK and JRE installed:
-        # sudo apt install openjdk-8-jdk-headless openjdk-8-jre-headless
+        # Tested on Ubuntu 18.04 64bit with openjdk-11 JDK and JRE installed:
+        # sudo apt install openjdk-11-jdk-headless openjdk-11-jre-headless
 
         # Set JAVA_HOME for this session
         try:
             os.environ['JAVA_HOME']
         except KeyError:
-            os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-8-openjdk-amd64/'
+            os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-11-openjdk-amd64/'
 
         # Set path and import jnius for this session
         from jnius import autoclass

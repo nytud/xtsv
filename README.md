@@ -23,8 +23,7 @@ used.
 ## Requirements
 
 - Python 3.5 <=
-- [Optional, if required by any module] PyJNIus and OpenJDK 8 JDK (we are
-  transitioning to OpenJDK 11)
+- [Optional, if required by any module] PyJNIus and OpenJDK 11 JDK
 
 ## API documentation
 

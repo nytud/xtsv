@@ -1,11 +1,11 @@
 import setuptools
 
-with open("README.md", "r") as fh:
+with open('README.md') as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name='xtsv',
-    version='0.0.2',
+    version='1.0',
     author='dlazesz',
     author_email='devel@oliphant.nytud.hu',
     description='A generic TSV-style format based intermodular communication framework and REST API',
