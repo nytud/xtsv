@@ -77,12 +77,11 @@ def import_pyjnius():
         from jnius import autoclass  # Warning already had shown. It is enough to show it only once!
     else:
         import sys
-        from jnius import cast, autoclass
-        class_loader = autoclass('java.lang.ClassLoader')
-        cl = class_loader.getSystemClassLoader()
-        ucl = cast('java.net.URLClassLoader', cl)
-        urls = ucl.getURLs()
-        cp = ':'.join(url.getFile() for url in urls)
+        from jnius import autoclass
+        system_class = autoclass('java.lang.System')
+        sep = system_class.getProperty('path.separator')
+        urls = system_class.getProperty('java.class.path').split(sep)
+        cp = ':'.join(urls)
 
         jnius_config.classpath_show_warning = False
         print('Warning: PyJNIus is already imported with the following classpath: {0} Please check if it is ok!'.
