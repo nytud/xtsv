@@ -13,7 +13,7 @@ def add_bool_arg(parser, name, help_text, default=False, has_negative_variant=Tr
 
     # Add positive variant to the main parser or to the group as needed
     group.add_argument('--' + name, dest=name.replace('-', '_'), help=help_text, action='store_true')
-    parser.set_defaults(**{name: default})
+    parser.set_defaults(**{name.replace('-', '_'): default})
 
 
 def parser_skeleton(*args, **kwargs):

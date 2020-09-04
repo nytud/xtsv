@@ -17,8 +17,28 @@ If a bug is found please leave feedback with the exact details.
 ``xtsv`` is licensed under the LGPL 3.0 license. The submodules have their
 own license.
 
-We are currently working on a paper which should be cited when `xtsv` is
-used.
+If you use this library, please cite the following paper:
+
+[Indig, Balázs, Bálint Sass, and Iván Mittelholcz. "The xtsv Framework and the Twelve Virtues of Pipelines." Proceedings of The 12th Language Resources and Evaluation Conference. 2020.](https://www.aclweb.org/anthology/2020.lrec-1.871/)
+
+```
+@inproceedings{indig-etal-2020-xtsv,
+    title = "The xtsv Framework and the Twelve Virtues of Pipelines",
+    author = "Indig, Bal{\'a}zs  and
+      Sass, B{\'a}lint  and
+      Mittelholcz, Iv{\'a}n",
+    booktitle = "Proceedings of The 12th Language Resources and Evaluation Conference",
+    month = may,
+    year = "2020",
+    address = "Marseille, France",
+    publisher = "European Language Resources Association",
+    url = "https://www.aclweb.org/anthology/2020.lrec-1.871",
+    pages = "7044--7052",
+    abstract = "We present xtsv, an abstract framework for building NLP pipelines. It covers several kinds of functionalities which can be implemented at an abstract level. We survey these features and argue that all are desired in a modern pipeline. The framework has a simple yet powerful internal communication format which is essentially tsv (tab separated values) with header plus some additional features. We put emphasis on the capabilities of the presented framework, for example its ability to allow new modules to be easily integrated or replaced, or the variety of its usage options. When a module is put into xtsv, all functionalities of the system are immediately available for that module, and the module can be be a part of an xtsv pipeline. The design also allows convenient investigation and manual correction of the data flow from one module to another. We demonstrate the power of our framework with a successful application: a concrete NLP pipeline for Hungarian called e-magyar text processing system (emtsv) which integrates Hungarian NLP tools in xtsv. All the advantages of the pipeline come from the inherent properties of the xtsv framework.",
+    language = "English",
+    ISBN = "979-10-95546-34-4",
+}
+```
 
 ## Requirements
 
