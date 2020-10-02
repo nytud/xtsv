@@ -1,11 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8, vim: expandtab:ts=4 -*-
+
 import setuptools
+from xtsv import __version__
 
 with open('README.md') as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name='xtsv',
-    version='1.0.2',
+    version=__version__,
     author='dlazesz',
     author_email='devel@oliphant.nytud.hu',
     description='A generic TSV-style format based intermodular communication framework and REST API',
