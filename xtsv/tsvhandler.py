@@ -79,6 +79,11 @@ def process(stream, internal_app, conll_comments=False):
         yield '{0}\n'.format('\t'.join(internal_app.target_fields))
         yield from internal_app.process_sentence(stream)
 
+    # For finalisers, to be able to generate a summary
+    final_output = getattr(internal_app, 'final_output', None)  # TODO document!
+    if final_output is not None:
+        yield from final_output()
+
 
 def sentence_iterator(input_stream, conll_comments=False, track_stream=None):
     curr_sen = []

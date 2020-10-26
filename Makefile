@@ -1,3 +1,5 @@
+# Bash is needed for time
+SHELL := /bin/bash -o pipefail
 DIR := ${CURDIR}
 red := $(shell tput setaf 1)
 green := $(shell tput setaf 2)
@@ -77,8 +79,8 @@ __release:
 		exit 1 ; \
 		fi
 	@echo "NEW VERSION: $(NEWVER)"
-	@make  uninstall clean-build
 	@sed -i -r "s/__version__ = '$(OLDVER)'/__version__ = '$(NEWVER)'/" $(MODULE)/version.py
+	@make  uninstall clean-build
 	@make check-version
 	@git add $(MODULE)/version.py
 	@git commit -m "Release $(NEWVER)"
