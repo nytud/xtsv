@@ -52,7 +52,7 @@ If you use this library, please cite the following paper:
   not feasible because of the required and supplied fields)
 - `HeaderError`: The exception thrown when the input could not satisfy the
   required fields in its header
-- `jnius_config`: Set JAVA VM options and CLASSPATH for the PyJNIus library
+- `jnius_config`: Set JAVA VM options and CLASSPATH for the [PyJNIus library](https://github.com/kivy/pyjnius)
 - `build_pipeline(inp_data, used_tools, available_tools, presets, conll_comments=False) -> iterator_on_output_lines`:
   Build the current pipeline from the input data (stream, iterable or string),
   the list of the elements of the desired pipeline chosen from the available
@@ -72,9 +72,6 @@ If you use this library, please cite the following paper:
   parser skeleton can be further customized when needed
 - `add_bool_arg(parser, name, help_text, default=False, has_negative_variant=True)`:
   A helper function to easily add BOOL arguments to the ArgumentParser class
-- `download(available_models=None, required_models=None)`: Download all (or a
-subset of) large model files specified in models.yaml (filename can be
-changed in the first parameter)
 
 To be defined by the actual pipeline:
 
@@ -131,40 +128,46 @@ format requirements:
 
 ## Creating a module that can be used with `xtsv`
 
+We strive to be a welcoming open source community.
+In agreement with the license, everybody is free to create a new compatible module without asking for permission.
+
 The following requirements apply for a new module:
 
 1. It must provide (at least) the mandatory API (see
 [emDummy](https://github.com/dlt-rilmta/emdummy) for a well-documented
 example)
-1. It must conform to the (to be defined) field-name conventions and the
+2. It must conform to the (to be defined) field-name conventions and the
 format conventions
-1. It must have an LGPL 3.0 compatible license
+3. It must have an LGPL 3.0 compatible license
+(as all modules communicate through the thin xtsv API, there is no restriction or obligation to commit for the module license.
+__This is not legal advice!__)
 
-The following steps are needed to insert the new module into the pipeline:
+The following technical steps are needed to insert the new module into the pipeline:
 
-1. Add the new module as submodule to the repository
-1. Insert the configuration in `config.py`:
+1. Add the new module package as a requirement to the requirements.txt of the pipeline's main repository (e.g. [emtsv](https://github.com/dlt-rilmta/emtsv))
+2. Insert the configuration in `config.py`:
 
     ```python
     # Setup the tuple:
-    #   module name (ending with the filename the class defined in),
+    #   module name,
     #   class,
     #   friendly name,
     #   args (tuple),
     #   kwargs (dict)
     em_dummy = (
-        'emdummy.dummytagger',
-        'DummyTagger',
+        'emdummy',
+        'EmDummy',
         'EXAMPLE (The friendly name of DummyTagger used in REST API form)',
         ('Params', 'goes', 'here'),
         {
             'source_fields': {'Source field names'},
-            'target_fields': ['Target field names']
+            'target_fields': ['Target field names'],
+            'other': 'kwargs as needed',
         }
     )
     ```
 
-1. Add the new module to `tools` list in `config.py`, optionally also to
+3. Add the new module to `tools` list in `config.py`, optionally also to
 `presets` dictionary
 
     ```python
@@ -173,8 +176,8 @@ The following steps are needed to insert the new module into the pipeline:
         (em_dummy, ('dummy-tagger', 'emDummy')),
     ]
     ```
-
-1. Test, commit and push
+4. Update README.md with the short description of the newly added module and add neccessary documentaion (e.g. extra installation instructions)
+4. Test, commit and push (create a pull request if you want to include your module in other's pipeline)
 
 ## Installation
 
@@ -191,8 +194,8 @@ To extend the toolchain with new modules, [just add new modules to
 Some examples of the realised applications:
 
 - [`emtsv`](https://github.com/dlt-rilmta/emtsv)
-- [`emmorphpy`](https://github.com/ppke-nlpg/emmorphpy/)
-- [`HunTag3`](https://github.com/ppke-nlpg/HunTag3)
+- [`emmorphpy`](https://github.com/dlt-rilmta/emmorphpy/)
+- [`HunTag3`](https://github.com/dlt-rilmta/HunTag3)
 
 ### Command-line interface
 
@@ -283,59 +286,66 @@ Client:
 
 ### As Python Library
 
-TODO
-
-1. Install xtsv in `xtsv` directory or make sure the emtsv installation is in
-the `PYTHONPATH` environment variable.
-1. `import xtsv`
-1. Example:
+1. Install xtsv package or make sure the main pipeline's installation is in the `PYTHONPATH` environment variable.
+2. `import xtsv`
+3. Example:
 
     ```Python
     import sys
-    from xtsv import build_pipeline, jnius_config, process, pipeline_rest_api, singleton_store_factory
-
-    jnius_config.classpath_show_warning = False  # To suppress warning
-
-    tools = ...
-    presets = ...
-
+    from xtsv import build_pipeline, parser_skeleton, jnius_config, process, pipeline_rest_api, singleton_store_factory
     # Imports end here. Must do only once per Python session
 
-    # Set input from any stream or iterable and output stream...
-    input_data = sys.stdin
-    output_iterator = sys.stdout
-    # Raw, or processed TSV input list and output file...
-    # input_data = iter(['A kutya', 'elment sétálni.'])  # Raw text line by line
-    # Processed data: header and the token POS-tag pairs line by line
-    # input_data = iter([['form', 'xpostag'], ['A', '[/Det|Art.Def]'], ['kutya', '[/N][Nom]'], ['elment', '[/V][Pst.NDef.3Sg]'], ['sétálni', '[/V][Inf]'], ['.', '.']])
-    # output_iterator = open('output.txt', 'w', encoding='UTF-8')  # File
-    # input_data = 'A kutya elment sétálni.'  # Or raw string in any acceptable format.
+    argparser = parser_skeleton(description='An example pipeline for xtsv')
+    opts = argparser.parse_args()
 
-    # Select a predefined task to do or provide your own list of pipeline
-    # elements
+    jnius_config.classpath_show_warning = opts.verbose  #  False to suppress warning
+
+    # Set input from any stream, iterator or raw string in any acceptable format
+    if opts.input_text is not None:
+        # Raw, or processed TSV input list and output file...
+        # input_data = ['A kutya', 'elment sétálni.']  # Raw text line by line
+        # Processed data: header and the token POS-tag pairs line by line
+        # input_data = [['form', 'xpostag'], ['A', '[/Det|Art.Def]'], ['kutya', '[/N][Nom]'], ['elment', '[/V][Pst.NDef.3Sg]'], ['sétálni', '[/V][Inf]'], ['.', '.']]
+        input_data = opts.input_text
+    else:
+        # Set input from any stream or iterable and output stream...
+        input_data = opts.input_stream
+
+    # Set output iterator: e.g. output_iterator = open('output.txt', 'w', encoding='UTF-8')  # File
+    output_iterator = opts.output_stream
+
+    # Select a predefined task to do or provide your own list of pipeline elements
+    # i.e. set the tagger name as in the _tools dictionary in the config.py_ e.g. used_tools = ['dummy']
     used_tools = ['tools', 'in', 'a', 'list']
+    presets = []
 
-    conll_comments = True  # Enable the usage of CoNLL comments
+    # The relevant part of config.py
+    # from emdummy import EmDummy
+    em_dummy = ('emdummy', 'EmDummy', 'EXAMPLE (The friendly name of EmDummy used in REST API form)',
+                ('Params', 'goes', 'here'), {'source_fields': {'form'},  # Source field names
+                                             'target_fields': {'star'}})  # Target field names
+    tools = [(em_dummy, ('dummy', 'dummy-tagger', 'emDummy'))]
+
 
     # Run the pipeline on input and write result to the output...
-    output_iterator.writelines(build_pipeline(input_data, used_tools, tools, presets, conll_comments))
+    # You can enable or disable CoNLL-U style comments here (default: disabled)
+    output_iterator.writelines(build_pipeline(input_data, used_tools, tools, presets, opts.conllu_comments))
 
     # Alternative: Run specific tool for input streams (still in emtsv format).
     # Useful for training a module (see Huntag3 for details):
-    output_iterator.writelines(process(sys.stdin, an_inited_tool))
+    # e.g. output_iterator.writelines(process(input_data, EmDummy(*em_dummy[3], **em_dummy[4])))
+    output_iterator.writelines(process(sys.stdin, Module('with', 'params')))
 
     # Or process individual tokens further... WARNING: The header will be the
     # first item in the iterator!
-    for tok in build_pipeline(input_data, used_tools, tools, presets, conll_comments):
+    for tok in build_pipeline(input_data, used_tools, tools, presets, opts.conllu_comments):
         if len(tok) > 1:  # Empty line (='\n') means end of sentence
             form, xpostag, *rest = tok.strip().split('\t')  # Split to the expected columns
 
-    # Alternative2: Flask application (REST API)
-    singleton_store = singleton_store_factory()
-    app = application = pipeline_rest_api(name='e-magyar-tsv', available_tools=tools, presets=presets,
-                                conll_comments=conll_comments, singleton_store=singleton_store,
-                                form_title='e-magyar text processing system',
-                                doc_link='https://github.com/dlt-rilmta/emtsv')
+    # Alternative2: Run REST API debug server
+    app = pipeline_rest_api(name='TEST', available_tools=tools, presets=presets,
+                            conll_comments=opts.conllu_comments, singleton_store=singleton_store_factory(),
+                            form_title='TEST TITLE', doc_link='https://github.com/dlt-rilmta/xtsv')
     # And run the Flask debug server separately
     app.run()
     ```
