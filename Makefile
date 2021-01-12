@@ -45,7 +45,7 @@ check-version:
 
 uninstall:
 	@echo "Uninstalling..."
-	pip3 uninstall -y ${MODULE}
+	python3 -m pip uninstall -y ${MODULE}
 
 clean:
 	rm -rf dist/ build/ ${MODULE}.egg-info/

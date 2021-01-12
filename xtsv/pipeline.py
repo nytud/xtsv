@@ -249,8 +249,7 @@ class RESTapp(Resource):
 
                     var fetchHandle = function(response) {
                         if (response.ok) {
-                            if (document.mainForm.getElementsByClassName('outputMode').length == 0 || 
-                                document.mainForm.outputMode.value == 'display') {  // ...write result!
+                            if (document.mainForm.outputMode.value == 'display') {  // ...write result!
                                 response.text().then(text =>
                                                      document.getElementById('result').innerHTML = pprint(text));
                             }
