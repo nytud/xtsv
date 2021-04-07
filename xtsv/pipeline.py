@@ -29,7 +29,7 @@ def build_pipeline(input_data, used_tools, available_tools, presets, conll_comme
     used_tools = resolve_presets(presets, used_tools)
 
     if isinstance(input_data, str):
-        inp_stream = iter(input_data.split('\n'))
+        inp_stream = iter(input_data.splitlines(keepends=True))
     elif isinstance(input_data, abc.Iterable):
         inp_stream = input_data
     else:
