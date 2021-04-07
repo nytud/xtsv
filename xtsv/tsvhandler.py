@@ -22,7 +22,7 @@ def process_header(fields, source_fields, target_fields, track_stream):
 
 
 # Only This method is public...
-def process(stream, internal_app, conll_comments=False):
+def process(stream, internal_app, conll_comments=False, default_pass_header=True):
     """
     Process the input stream and check the header for the next module in the pipeline (internal_app).
      Five types of internal app is allowed:
@@ -38,6 +38,8 @@ def process(stream, internal_app, conll_comments=False):
     :param internal_app: the initialised xtsv module class as module (type 2 by default)
     :param conll_comments: Allow conll style comments (lines starting with '# ') before sentences
      (this allows #tags at the beginning of the sentence commonly used in social mediat) (default: false)
+    :param default_pass_header: Default in passing header
+     can be used to tell the last module to omit header (chunked input)
     :return: Iterator over the processed tokens (iterator of lists of features)
     """
     track_stream = {'file_name': getattr(stream, 'name', 'no filename for stream'), 'curr_line_number': 0}
@@ -50,7 +52,8 @@ def process(stream, internal_app, conll_comments=False):
             fields = []
         header, field_names = process_header(fields, internal_app.source_fields, internal_app.target_fields,
                                              track_stream)
-        if getattr(internal_app, 'pass_header', True):  # Pass or hold back the header
+        # Pass or hold back the header
+        if getattr(internal_app, 'pass_header', default_pass_header) and default_pass_header:
             yield header
 
         # Like binding names to indices...

@@ -22,7 +22,8 @@ class ModuleError(ValueError):
     pass
 
 
-def build_pipeline(input_data, used_tools, available_tools, presets, conll_comments=False, singleton_store=None):
+def build_pipeline(input_data, used_tools, available_tools, presets, conll_comments=False, singleton_store=None,
+                   output_header=True):
     friendly_name_for_modules = {name: tool_params[1] for tool_params, names in available_tools for name in names}
     current_initialised_tools = lazy_init_tools(used_tools, available_tools, presets, singleton_store)
 
@@ -48,6 +49,7 @@ def build_pipeline(input_data, used_tools, available_tools, presets, conll_comme
     pipeline_end_friendly = pipeline_begin_friendly
     pipeline_prod = pipeline_begin_prod
 
+    last_used_tool_nr = len(used_tools) - 1
     for i, program in enumerate(used_tools):
         program_friendly = friendly_name_for_modules[program]
         pr = current_initialised_tools.get(program)
@@ -58,7 +60,7 @@ def build_pipeline(input_data, used_tools, available_tools, presets, conll_comme
                 raise ModuleError('ERROR: \'{0}\' module requires {1} fields but the previous module \'{2}\''
                                   ' has only {3} fields!'.format(program_friendly, pr.source_fields,
                                                                  pipeline_end_friendly, pipeline_prod))
-            pipeline_end = process(pipeline_end, pr, conll_comments)
+            pipeline_end = process(pipeline_end, pr, conll_comments, i != last_used_tool_nr or output_header)
             pipeline_end_friendly = program_friendly
             pipeline_prod |= set(pr.target_fields)
         else:
@@ -69,13 +71,13 @@ def build_pipeline(input_data, used_tools, available_tools, presets, conll_comme
 
 
 def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_store=None, form_title='xtsv pipeline',
-                      form_type='checkbox', doc_link=''):
+                      form_type='checkbox', doc_link='', output_header=True):
     if available_tools is None:
         raise ValueError('No internal_app is given!')
 
     kwargs = {'internal_apps': available_tools, 'presets': presets, 'conll_comments': conll_comments,
               'singleton_store': singleton_store, 'form_title': form_title, 'form_type': form_type,
-              'doc_link': doc_link}
+              'doc_link': doc_link, 'output_header': output_header}
 
     app = Flask(name)
     api = Api(app)
@@ -415,7 +417,7 @@ class RESTapp(Resource):
         return out_html
 
     def __init__(self, internal_apps=None, presets=(), conll_comments=False, singleton_store=None,
-                 form_title='xtsv pipeline', form_type='checkbox', doc_link=''):
+                 form_title='xtsv pipeline', form_type='checkbox', doc_link='', output_header=True):
         """
         Init REST API class
         :param internal_apps: pre-inicialised applications
@@ -427,10 +429,12 @@ class RESTapp(Resource):
         :param form_type: Some tools can be used as alternatives (e.g. different modes of emMorph),
                 some allow sequences to be defined
         :param doc_link: A link to documentation on usage for helping newbies
+        :param output_header: Make header for output or not
         """
         self._internal_apps = internal_apps
         self._presets = presets
         self._conll_comments = conll_comments
+        self._output_header = output_header
 
         self._singleton_store = singleton_store
         self._title = form_title
@@ -471,7 +475,8 @@ class RESTapp(Resource):
         else:
             final_convert = self._identity
 
-        conll_comments = request.form.get('conll_comments', self._conll_comments)
+        conll_comments = self._get_checked_bool('conll_comments', self._conll_comments)
+        output_header = self._get_checked_bool('output_header', self._output_header)
         input_text = request.form.get('text')
         if 'file' in request.files and input_text is None:
             inp_data = codecs.getreader('UTF-8')(request.files['file'])
@@ -485,7 +490,7 @@ class RESTapp(Resource):
 
         try:
             last_prog = build_pipeline(inp_data, required_tools, self._internal_apps, self._presets, conll_comments,
-                                       self._singleton_store)
+                                       self._singleton_store, output_header)
         except (HeaderError, ModuleError) as e:
             abort(400, e)
             last_prog = ()  # Silence, dummy IDE
@@ -495,6 +500,18 @@ class RESTapp(Resource):
         if not tohtml:
             response.headers.set('Content-Disposition', 'attachment', filename='output.txt')
         return response
+
+    @staticmethod
+    def _get_checked_bool(input_param_name, default):
+        input_param = request.form.get(input_param_name, default)
+        if not isinstance(input_param, bool):
+            if input_param.lower() == 'true':
+                input_param = True
+            elif input_param.lower() == 'false':
+                input_param = False
+            else:
+                abort(400, 'ERROR: argument {0} should be True/False!'.format(input_param_name))
+        return input_param
 
     @staticmethod
     def _make_json_response(json_text, status=200):

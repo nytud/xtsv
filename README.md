@@ -329,7 +329,8 @@ Client:
 
     # Run the pipeline on input and write result to the output...
     # You can enable or disable CoNLL-U style comments here (default: disabled)
-    output_iterator.writelines(build_pipeline(input_data, used_tools, tools, presets, opts.conllu_comments))
+    output_iterator.writelines(build_pipeline(input_data, used_tools, tools, presets, opts.conllu_comments,
+                                              opts.output_header))
 
     # Alternative: Run specific tool for input streams (still in emtsv format).
     # Useful for training a module (see Huntag3 for details):
@@ -338,14 +339,15 @@ Client:
 
     # Or process individual tokens further... WARNING: The header will be the
     # first item in the iterator!
-    for tok in build_pipeline(input_data, used_tools, tools, presets, opts.conllu_comments):
+    for tok in build_pipeline(input_data, used_tools, tools, presets, opts.conllu_comments, opts.output_header):
         if len(tok) > 1:  # Empty line (='\n') means end of sentence
             form, xpostag, *rest = tok.strip().split('\t')  # Split to the expected columns
 
     # Alternative2: Run REST API debug server
     app = pipeline_rest_api(name='TEST', available_tools=tools, presets=presets,
                             conll_comments=opts.conllu_comments, singleton_store=singleton_store_factory(),
-                            form_title='TEST TITLE', doc_link='https://github.com/dlt-rilmta/xtsv')
+                            form_title='TEST TITLE', doc_link='https://github.com/dlt-rilmta/xtsv',
+                            output_header=opts.output_header)
     # And run the Flask debug server separately
     app.run()
     ```
