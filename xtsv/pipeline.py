@@ -29,7 +29,7 @@ def build_pipeline(input_data, used_tools, available_tools, presets, conll_comme
     used_tools = resolve_presets(presets, used_tools)
 
     if isinstance(input_data, str):
-        inp_stream = iter([input_data])
+        inp_stream = iter(input_data.split('\n'))
     elif isinstance(input_data, abc.Iterable):
         inp_stream = input_data
     else:
@@ -177,7 +177,7 @@ class RESTapp(Resource):
     _html_on_submit_form = """function OnSubmitForm() {
                     var text = document.mainForm.inputText.value;
 
-                    if (text.length == 0 && (document.mainForm.getElementsByClassName('inputfile').length == 0 ||
+                    if (text.length == 0 && (document.getElementsByName('inputfile').length == 0 ||
                         document.mainForm.inputfile.files.length == 0)) {
                         alert('Input is empty!');
                         return false;
@@ -399,7 +399,7 @@ class RESTapp(Resource):
         if self._tools_type == 'radio':
             text_or_file = self._text_or_file_radio
             text_or_file2 = ''
-            text_or_file3 = ''
+            text_or_file3 = '<input type="hidden" name="outputMode" id="outputMode" value="display">'
             on_change = ''
         else:
             text_or_file = self._text_or_file
