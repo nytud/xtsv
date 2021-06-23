@@ -227,7 +227,7 @@ docker form as well):
 
 ### __Docker image__
 
-With the appropriate Dockerfile `xtsv` can be used as follows:
+#### With the appropriate Dockerfile `xtsv` can be used as follows
 
 - Runnable docker form (CLI usage of docker image):
 
@@ -235,7 +235,7 @@ With the appropriate Dockerfile `xtsv` can be used as follows:
   cat input.txt | docker run -i xtsv-docker task,separated,by,comas > output.txt
   ```
 
-- As service through Rest API (docker container)
+#### As service through Rest API (docker container)
 
   ```bash
   docker run --rm -p5000:5000 -it xtsv-docker  # REST API listening on http://0.0.0.0:5000
@@ -243,9 +243,9 @@ With the appropriate Dockerfile `xtsv` can be used as follows:
 
 ### REST API
 
-Server:
+#### Server
 
-- Docker image ([see above](#docker-image))
+- __RECOMMENDED WAY__: Docker image ([see above](#as-service-through-rest-api-docker-container))
 - Any wsgi server (`uwsgi`, `gunicorn`, `waitress`, etc.) can be configured
 to run with a prepared wsgi file .
 - Debug server (Flask) __only for development (single threaded, one request
@@ -256,11 +256,7 @@ to run with a prepared wsgi file .
   this method in production as it is built atop of Flask debug server! Please
   consider using the Docker image for REST API in production!__)
 
-- Any wsgi server (`uwsgi`, `gunicorn`, `waitress`, etc.) can be configured
-  to run with a prepared wsgi file .
-- Docker image (see above)
-
-Client:
+#### Client
 
 - Web fronted provided by `xtsv`
 - From Python (the URL contains the tools to be run separated by `/`):
