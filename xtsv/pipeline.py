@@ -469,15 +469,17 @@ class RESTapp(Resource):
         return self._make_json_response(json_text)
 
     def post(self, path):
-        tohtml = request.form.get('toHTML', False)
+        # Handle both json and form data transparently
+        req_data = request.get_json() if request.is_json else request.form
+        tohtml = req_data.get('toHTML', False)
         if tohtml:
             final_convert = self._to_html
         else:
             final_convert = self._identity
 
-        conll_comments = self._get_checked_bool('conll_comments', self._conll_comments)
-        output_header = self._get_checked_bool('output_header', self._output_header)
-        input_text = request.form.get('text')
+        conll_comments = self._get_checked_bool('conll_comments', self._conll_comments, req_data)
+        output_header = self._get_checked_bool('output_header', self._output_header, req_data)
+        input_text = req_data.get('text')
         if 'file' in request.files and input_text is None:
             inp_data = codecs.getreader('UTF-8')(request.files['file'])
         elif 'file' not in request.files and input_text is not None:
@@ -502,8 +504,8 @@ class RESTapp(Resource):
         return response
 
     @staticmethod
-    def _get_checked_bool(input_param_name, default):
-        input_param = request.form.get(input_param_name, default)
+    def _get_checked_bool(input_param_name, default, req_data):
+        input_param = req_data.get(input_param_name, default)
         if not isinstance(input_param, bool):
             if input_param.lower() == 'true':
                 input_param = True
