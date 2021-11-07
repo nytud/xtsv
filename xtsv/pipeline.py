@@ -12,6 +12,7 @@ from json import dumps as json_dumps
 
 from flask import Flask, request, Response, stream_with_context, make_response
 from flask_restful import Api, Resource
+from flask_restful.inputs import boolean
 from werkzeug.exceptions import abort
 
 from .tsvhandler import process, HeaderError
@@ -505,15 +506,10 @@ class RESTapp(Resource):
 
     @staticmethod
     def _get_checked_bool(input_param_name, default, req_data):
-        input_param = req_data.get(input_param_name, default)
-        if not isinstance(input_param, bool):
-            if input_param.lower() == 'true':
-                input_param = True
-            elif input_param.lower() == 'false':
-                input_param = False
-            else:
-                abort(400, 'ERROR: argument {0} should be True/False!'.format(input_param_name))
-        return input_param
+        try:
+            return boolean(req_data.get(input_param_name, default))
+        except ValueError:
+            abort(400, 'ERROR: argument {0} should be True/False!'.format(input_param_name))
 
     @staticmethod
     def _make_json_response(json_text, status=200):
