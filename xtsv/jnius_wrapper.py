@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
 """
@@ -14,6 +14,7 @@ class DummyJniusConfig:
     classpath_show_warning = True
     options = []
     classpath = None
+    vm_running = False
 
     @staticmethod
     def set_options(*_):
@@ -61,14 +62,14 @@ def import_pyjnius():
     # Check if autoclass is already imported...
     if not jnius_config.vm_running:
 
-        # Tested on Ubuntu 16.04 64bit with openjdk-8 JDK and JRE installed:
-        # sudo apt install openjdk-8-jdk-headless openjdk-8-jre-headless
+        # Tested on Ubuntu 18.04 64bit with openjdk-11 JDK and JRE installed:
+        # sudo apt install openjdk-11-jdk-headless openjdk-11-jre-headless
 
         # Set JAVA_HOME for this session
         try:
             os.environ['JAVA_HOME']
         except KeyError:
-            os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-8-openjdk-amd64/'
+            os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-11-openjdk-amd64/'
 
         # Set path and import jnius for this session
         from jnius import autoclass
@@ -76,12 +77,11 @@ def import_pyjnius():
         from jnius import autoclass  # Warning already had shown. It is enough to show it only once!
     else:
         import sys
-        from jnius import cast, autoclass
-        class_loader = autoclass('java.lang.ClassLoader')
-        cl = class_loader.getSystemClassLoader()
-        ucl = cast('java.net.URLClassLoader', cl)
-        urls = ucl.getURLs()
-        cp = ':'.join(url.getFile() for url in urls)
+        from jnius import autoclass
+        system_class = autoclass('java.lang.System')
+        sep = system_class.getProperty('path.separator')
+        urls = system_class.getProperty('java.class.path').split(sep)
+        cp = ':'.join(urls)
 
         jnius_config.classpath_show_warning = False
         print('Warning: PyJNIus is already imported with the following classpath: {0} Please check if it is ok!'.

@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8, vim: expandtab:ts=4 -*-
 
 import logging
@@ -9,10 +9,11 @@ class HeaderError(ValueError):
     pass
 
 
-def process_header(fields, source_fields, target_fields):
+def process_header(fields, source_fields, target_fields, track_stream):
     if not source_fields.issubset(set(fields)):
-        raise HeaderError('Input does not have the required field names ({0}). The following field names found: {1}'.
-                          format(sorted(source_fields), fields))
+        raise HeaderError('Input ({0}) does not have the required field names ({1}). '
+                          'The following field names found: {2}'.
+                          format(track_stream['file_name'], sorted(source_fields), fields))
     fields.extend(target_fields)                                    # Add target fields when apply (only for tagging)
     field_names = {name: i for i, name in enumerate(fields)}        # Decode field names
     field_names.update({i: name for i, name in enumerate(fields)})  # Both ways...
@@ -21,7 +22,7 @@ def process_header(fields, source_fields, target_fields):
 
 
 # Only This method is public...
-def process(stream, internal_app, conll_comments=False):
+def process(stream, internal_app, conll_comments=False, default_pass_header=True):
     """
     Process the input stream and check the header for the next module in the pipeline (internal_app).
      Five types of internal app is allowed:
@@ -35,17 +36,24 @@ def process(stream, internal_app, conll_comments=False):
     :param stream: Line chunked input stream, one token per line (TSV) and emtpy lines as sentence separator,
      or free-format input for tokenisers
     :param internal_app: the initialised xtsv module class as module (type 2 by default)
-    :param conll_comments: Allow conll style comments (lines starting with '#') before sentences (default: false)
+    :param conll_comments: Allow conll style comments (lines starting with '# ') before sentences
+     (this allows #tags at the beginning of the sentence commonly used in social mediat) (default: false)
+    :param default_pass_header: Default in passing header
+     can be used to tell the last module to omit header (chunked input)
     :return: Iterator over the processed tokens (iterator of lists of features)
     """
+    track_stream = {'file_name': getattr(stream, 'name', 'no filename for stream'), 'curr_line_number': 0}
     fixed_order_tsv_input = getattr(internal_app, 'fixed_order_tsv_input', False)
     if len(internal_app.source_fields) > 0 or fixed_order_tsv_input:
         if not fixed_order_tsv_input:
             fields = next(stream).strip().split('\t')  # Read header to fields
+            track_stream['curr_line_number'] += 1
         else:
             fields = []
-        header, field_names = process_header(fields, internal_app.source_fields, internal_app.target_fields)
-        if getattr(internal_app, 'pass_header', True):  # Pass or hold back the header
+        header, field_names = process_header(fields, internal_app.source_fields, internal_app.target_fields,
+                                             track_stream)
+        # Pass or hold back the header
+        if getattr(internal_app, 'pass_header', default_pass_header) and default_pass_header:
             yield header
 
         # Like binding names to indices...
@@ -53,12 +61,17 @@ def process(stream, internal_app, conll_comments=False):
 
         logger.info('processing sentences...')
         sen_count = 0
-        for sen_count, (sen, comment) in enumerate(sentence_iterator(stream, conll_comments)):
+        for sen_count, (sen, comment) in enumerate(sentence_iterator(stream, conll_comments, track_stream)):
             sen_count += 1
             if len(comment) > 0:
                 yield comment
-
-            yield from ('{0}\n'.format('\t'.join(tok)) for tok in internal_app.process_sentence(sen, field_values))
+            curr_line = track_stream['curr_line_number']
+            try:
+                yield from ('{0}\n'.format('\t'.join(tok)) for tok in internal_app.process_sentence(sen, field_values))
+            except Exception as e:  # Catch every exception to add the file name and line number before reraise
+                import sys
+                raise type(e)('In "{0}" at {1}: {2}'.format(track_stream['file_name'], curr_line, str(e))).\
+                    with_traceback(sys.exc_info()[2])
             yield '\n'
 
             if sen_count % 1000 == 0:
@@ -69,14 +82,21 @@ def process(stream, internal_app, conll_comments=False):
         yield '{0}\n'.format('\t'.join(internal_app.target_fields))
         yield from internal_app.process_sentence(stream)
 
+    # For finalisers, to be able to generate a summary
+    final_output = getattr(internal_app, 'final_output', None)  # TODO document!
+    if final_output is not None:
+        yield from final_output()
 
-def sentence_iterator(input_stream, conll_comments=False):
+
+def sentence_iterator(input_stream, conll_comments=False, track_stream=None):
     curr_sen = []
     curr_comment = ''
     for line in input_stream:
+        track_stream['curr_line_number'] += 1
         line = line.strip()
-        # Comment handling: Before sentence, line starts with # and comments are allowed by parameter
-        if len(curr_sen) == 0 and line.startswith('#') and conll_comments:
+        # Comment handling: Before sentence, line starts with '# ' and comments are allowed by parameter
+        # (this allows #tags at the beginning of the sentence commonly used in social mediat)
+        if len(curr_sen) == 0 and line.startswith('# ') and conll_comments:
             curr_comment += '{0}\n'.format(line)  # Comment before sentence
         # Blank line handling
         elif len(line) == 0:
@@ -85,9 +105,10 @@ def sentence_iterator(input_stream, conll_comments=False):
                 curr_sen = []
                 curr_comment = ''
             else:  # WARNING: Multiple blank line
-                logger.warning('Wrong formatted sentences, only one blank line allowed!')
+                logger.warning('Wrong formatted sentences ({0}:{1}), only one blank line allowed!'.
+                               format(track_stream['file_name'], track_stream['curr_line_number']))
         else:
             curr_sen.append(line.split('\t'))
     if curr_sen:
-        logger.warning('No blank line before EOF!')
+        logger.warning('No blank line before EOF ({0})!'.format(track_stream['file_name']))
         yield curr_sen, curr_comment
