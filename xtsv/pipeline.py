@@ -5,12 +5,13 @@ import importlib
 import codecs
 from itertools import chain
 from collections import defaultdict, OrderedDict, abc
+from os.path import abspath as os_path_abspath, dirname as os_path_dirname, join as os_path_join
 
 # import atexit
 
 from json import dumps as json_dumps
 
-from flask import Flask, request, Response, stream_with_context, make_response
+from flask import Flask, request, Response, stream_with_context, make_response, render_template
 from flask_restful import Api, Resource
 from flask_restful.inputs import boolean
 from werkzeug.exceptions import abort
@@ -80,7 +81,7 @@ def pipeline_rest_api(name, available_tools, presets, conll_comments, singleton_
               'singleton_store': singleton_store, 'form_title': form_title, 'form_type': form_type,
               'doc_link': doc_link, 'output_header': output_header}
 
-    app = Flask(name)
+    app = Flask(name,  template_folder=os_path_join(os_path_dirname(os_path_abspath(__file__)), 'templates'))
     api = Api(app)
     api.add_resource(RESTapp, '/', '/<path:path>', resource_class_kwargs=kwargs)  # Catch-all with self
 
@@ -156,267 +157,6 @@ def lazy_init_tools(used_tools, available_tools, presets, singleton_store=None):
 
 
 class RESTapp(Resource):
-    _html_style = """<style>
-                body, html {
-                    width: 100%;
-                    height: 100%;
-                    margin: 0;
-                    padding: 10px;
-                    display:table;
-                }
-                body {
-                    display:table-cell;
-                    vertical-align:middle;
-                }
-                div {
-                    white-space: nowrap; /*Prevents Wrapping*/
-
-                    overflow-x: hidden;
-                    overflow-y: hidden;
-                }
-            </style>"""
-
-    # str.replace() is used instead of str.format() because the many curly brackets!
-    _html_on_submit_form = """function OnSubmitForm() {
-                    var text = document.mainForm.inputText.value;
-
-                    if (text.length == 0 && (document.getElementsByName('inputfile').length == 0 ||
-                        document.mainForm.inputfile.files.length == 0)) {
-                        alert('Input is empty!');
-                        return false;
-                    }
-
-                    var url = 'BASE_URL_PLACEHOLDER';
-
-                    var none_are_checked = true;
-                    // Get all the checkboxes in order...
-                    var fields = document.mainForm.tools.getElementsByTagName('input');
-                    for(var i = 0; i < fields.length; ++i) {
-                        if(fields[i].checked) {
-                            // ...and append checked ones to the URL to get the proper tool list!
-                            url += '/' + fields[i].value;
-                            none_are_checked = false;
-                        }
-                    }
-
-                    if (none_are_checked) {
-                        alert('At least one tool must be selected!');
-                        return false;
-                    }
-
-                    document.mainForm.submit.disabled = true;  // Prevent double submit!
-
-                    if (fields[0].type != 'radio') {
-                        var data = new FormData();
-
-                        if (document.mainForm.inputfile.files.length > 0) {
-                            var file = document.mainForm.inputfile.files[0]
-                            data.append('file', file, file.name);
-                        }
-                        else {
-                            var blob = new Blob([text], {type:'text/plain'});
-                            data.append('file', blob, 'input.txt');
-                        }
-                        if (document.mainForm.outputMode.value == 'display') {
-                            data.append('toHTML', true);
-                        }
-                    }
-                    else {
-                        url += '/' + text;
-                    }
-
-                    function initDownload(blob) {
-                        var link = document.createElement('a');  // Initiate download
-                        link.href = window.URL.createObjectURL(blob);
-                        link.download = 'output.txt';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    }
-
-                    function writeError(msg) {
-                        var div = document.createElement('div');
-                        div.innerHTML = msg.trim();
-                        var text =  div.getElementsByTagName('p')[0].innerHTML;
-                        document.getElementById('result').innerHTML = text;
-                    }
-
-                    function pprint(text) {
-                        if (fields[0].type != 'radio') {
-                            return text;
-                        }
-                        else {
-                            return '<pre>' + text + '</pre>';
-                        }
-                    }
-
-                    var fetchHandle = function(response) {
-                        if (response.ok) {
-                            if (document.mainForm.outputMode.value == 'display') {  // ...write result!
-                                response.text().then(text =>
-                                                     document.getElementById('result').innerHTML = pprint(text));
-                            }
-                            else {
-                                document.getElementById('result').innerHTML = '';  // Purge possible previous result 
-                                response.blob().then(resp => initDownload(resp));
-                            }
-                        }
-                        else {
-                            response.text().then(writeError);
-                        }
-            
-                        document.mainForm.submit.disabled = false;  // Reenable submit!
-                    };
-                    if (fields[0].type != 'radio') {
-                        var params = {method: 'POST', credentials: 'include', body: data};
-                    }
-                    else {
-                        var params = {method: 'GET', credentials: 'include'};
-                    }
-                    fetch(url, params).then(fetchHandle).catch(fetchHandle);
-                    return false; // Do not submit actually, as fetch has already done it...
-                }
-                function OnChangeFile() {
-                    if (document.mainForm.inputfile.files.length > 0) {
-                        document.mainForm.inputText.value = '';
-                    }
-                }
-                function OnChangeTextarea() {
-                    if (document.mainForm.inputText.value.length > 0) {
-                        document.mainForm.inputfile.value = document.mainForm.inputfile.defaultValue;
-                    }
-                }"""
-
-    # str.replace() is used instead of str.format() because the many curly brackets!
-    _html_w_presets = """function OnChangePreset() {
-                    var val = document.mainForm.presets.value;
-
-                    if (val == '') {
-                        return true;  // If None is selected, do nothing...
-                    }
-
-                    var preset2tools = {};
-
-                    PRESETS_PLACEHOLDER
-
-                    var currTools = preset2tools[val];
-
-                    // Get all the checkboxes in order...
-                    var fields = document.mainForm.tools.getElementsByTagName('input');
-                    for(var i = 0; i < fields.length; ++i) {
-                        // ...and set appropriate checked states.
-                        fields[i].checked = currTools.has(fields[i].value);
-                    }
-                }
-
-                function OnChangeCheckbBox() {
-                    document.mainForm.presets.value = '';
-                }"""
-
-    # str.format() is used to replace the dynamic parts
-    _presets_js_template = '                    preset2tools[\'{0}\'] = new Set({1});'
-
-    # str.format() is used to replace the dynamic parts
-    _presets_html_template = '                       <option value="{0}">{1}</option>'
-
-    _html_wo_presets = """function OnChangeCheckbBox() {
-                }"""
-
-    # str.format() is used to replace the dynamic parts
-    _html_w_presets2 = """<p>
-                   <label for="presets">Available presets:</label><br/>
-                   <select name="presets" id="presets" onchange="OnChangePreset()">
-                       <option value="">None</option>
-                       {0}
-                   </select>
-               </p>"""
-
-    # str.format() is used to replace the dynamic parts
-    _html_main = """<!DOCTYPE html>
-    <html lang="en-US">
-
-        <head>
-            <meta charset="UTF-8">
-            <title>{0}</title>
-            {1}
-            <script>
-                {2}
-                {3}
-            </script>
-        </head>
-        <body>
-            <form name="mainForm" method="POST" onsubmit="return OnSubmitForm();" id="mainForm">
-               {4}
-               <p>
-                   <label for="tools">
-                   Available tools (see <a href="{5}">documentation</a> for more details on usage):</label><br/>
-                   <fieldset name="tools" id="tools" style="border: 0;">
-                       {6}
-                   </fieldset>
-               </p>
-               <p>
-                   {7}
-               </p>
-               {9}
-               <input type="submit" name="submit" value="Process"><br/>
-            </form>
-        <p>Result: </p>
-        <div id="result" name="result"></div>
-        </body>
-    </html>
-    """
-
-    _text_or_file = """<label for="inputText">Input text or file:</label><br/><br/>
-                   <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
-                   <textarea autofocus rows="10" cols="80" placeholder="Enter text here..." form="mainForm"
-                    name="inputText" id="inputText" {8}></textarea><br/>"""
-    _text_or_file_radio = """<label for="inputText">Input word:</label><br/><br/>
-                       <input type="text" name="inputText" id="inputText" placeholder="Enter word here..." />"""
-
-    _text_or_file2 = 'onchange="OnChangeTextarea()"'
-    _text_or_file3 = """<p>
-                   <label for="outputMode">Output mode:</label><br/>
-                   <select name="outputMode" id="outputMode">
-                       <option value="display">Display below</option>
-                       <option value="download">Download</option>
-                   </select><br/>
-               </p>"""
-
-    # Replace: 'checkbox'|'radio', tool_name, friendly_name
-    _html_tool = '                       <input type="{0}" {3}name="availableTools" id="{1}" value="{1}"/>' \
-                 '<label for="{1}">{2}</label><br/>'
-
-    def gen_html_form(self, base_url):
-        if len(self._presets) > 0:
-            presets_js_cont = '\n'.join(self._presets_js_template.format(preset_name, str(tools_list[1]))
-                                        for preset_name, tools_list in self._presets.items()).lstrip()
-            presets_js_formatted = self._html_w_presets.replace('PRESETS_PLACEHOLDER', presets_js_cont)
-
-            presets_html_cont = '\n'.join(self._presets_html_template.format(preset_name, friendly_name)
-                                          for preset_name, (friendly_name, tools_list)
-                                          in self._presets.items()).lstrip()
-            presets_html_formatted = self._html_w_presets2.format(presets_html_cont)
-        else:
-            presets_js_formatted = self._html_wo_presets
-            presets_html_formatted = ''
-        if self._tools_type == 'radio':
-            text_or_file = self._text_or_file_radio
-            text_or_file2 = ''
-            text_or_file3 = '<input type="hidden" name="outputMode" id="outputMode" value="display">'
-            on_change = ''
-        else:
-            text_or_file = self._text_or_file
-            text_or_file2 = self._text_or_file2
-            text_or_file3 = self._text_or_file3
-            on_change = 'onchange="OnChangeCheckbBox()" '
-        html_tools = '\n'.join(self._html_tool.format(self._tools_type, tool_name, friendly_name, on_change)
-                               for tool_name, friendly_name in self._available_tools.items()).lstrip()
-        out_html = self._html_main.format(self._title, self._html_style,
-                                          self._html_on_submit_form.replace('BASE_URL_PLACEHOLDER', base_url),
-                                          presets_js_formatted, presets_html_formatted, self._doc_link, html_tools,
-                                          text_or_file, text_or_file2, text_or_file3)
-        return out_html
-
     def __init__(self, internal_apps=None, presets=(), conll_comments=False, singleton_store=None,
                  form_title='xtsv pipeline', form_type='checkbox', doc_link='', output_header=True):
         """
@@ -462,7 +202,9 @@ class RESTapp(Resource):
         if len(path) == 0 or len(token) == 0 or prog is None:
             base_url = request.url_root.rstrip('/')  # FORM URL
 
-            out_html = self.gen_html_form(base_url)
+            out_html = render_template('layout.html', title=self._title, base_url=base_url, doc_link=self._doc_link,
+                                       presets=self._presets, available_tools=self._available_tools,
+                                       tools_type=self._tools_type)
             return Response(out_html)
 
         json_text = json_dumps({token: prog(token)}, indent=2, sort_keys=True, ensure_ascii=False)

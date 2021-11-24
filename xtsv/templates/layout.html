@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>{{ title }}</title>
+        <style>
+            body, html {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 10px;
+                display: table;
+            }
+            body {
+                display: table-cell;
+                vertical-align: middle;
+            }
+            div {
+                white-space: nowrap; /* Prevents Wrapping */
+
+                overflow-x: hidden;
+                overflow-y: hidden;
+            }
+        </style>
+        <script>
+            function OnSubmitForm() {
+                    var text = document.mainForm.inputText.value;
+
+                    if (text.length == 0 && (document.getElementsByName('inputfile').length == 0 ||
+                        document.mainForm.inputfile.files.length == 0)) {
+                        alert('Input is empty!');
+                        return false;
+                    }
+
+                    var url = '{{ base_url }}';
+
+                    var none_are_checked = true;
+                    // Get all the checkboxes in order...
+                    var fields = document.mainForm.tools.getElementsByTagName('input');
+                    for(var i = 0; i < fields.length; ++i) {
+                        if(fields[i].checked) {
+                            // ...and append checked ones to the URL to get the proper tool list!
+                            url += '/' + fields[i].value;
+                            none_are_checked = false;
+                        }
+                    }
+
+                    if (none_are_checked) {
+                        alert('At least one tool must be selected!');
+                        return false;
+                    }
+
+                    document.mainForm.submit.disabled = true;  // Prevent double submit!
+
+                    if (fields[0].type != 'radio') {
+                        var data = new FormData();
+
+                        if (document.mainForm.inputfile.files.length > 0) {
+                            var file = document.mainForm.inputfile.files[0]
+                            data.append('file', file, file.name);
+                        }
+                        else {
+                            var blob = new Blob([text], {type:'text/plain'});
+                            data.append('file', blob, 'input.txt');
+                        }
+                        if (document.mainForm.outputMode.value == 'display') {
+                            data.append('toHTML', true);
+                        }
+                    }
+                    else {
+                        url += '/' + text;
+                    }
+
+                    function initDownload(blob) {
+                        var link = document.createElement('a');  // Initiate download
+                        link.href = window.URL.createObjectURL(blob);
+                        link.download = 'output.txt';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+
+                    function writeError(msg) {
+                        var div = document.createElement('div');
+                        div.innerHTML = msg.trim();
+                        var text =  div.getElementsByTagName('p')[0].innerHTML;
+                        document.getElementById('result').innerHTML = text;
+                    }
+
+                    function pprint(text) {
+                        if (fields[0].type != 'radio') {
+                            return text;
+                        }
+                        else {
+                            return '<pre>' + text + '</pre>';
+                        }
+                    }
+
+                    var fetchHandle = function(response) {
+                        if (response.ok) {
+                            if (document.mainForm.outputMode.value == 'display') {  // ...write result!
+                                response.text().then(text =>
+                                                     document.getElementById('result').innerHTML = pprint(text));
+                            }
+                            else {
+                                document.getElementById('result').innerHTML = '';  // Purge possible previous result
+                                response.blob().then(resp => initDownload(resp));
+                            }
+                        }
+                        else {
+                            response.text().then(writeError);
+                        }
+
+                        document.mainForm.submit.disabled = false;  // Reenable submit!
+                    };
+                    if (fields[0].type != 'radio') {
+                        var params = {method: 'POST', credentials: 'include', body: data};
+                    }
+                    else {
+                        var params = {method: 'GET', credentials: 'include'};
+                    }
+                    fetch(url, params).then(fetchHandle).catch(fetchHandle);
+                    return false; // Do not submit actually, as fetch has already done it...
+                }
+                function OnChangeFile() {
+                    if (document.mainForm.inputfile.files.length > 0) {
+                        document.mainForm.inputText.value = '';
+                    }
+                }
+                function OnChangeTextarea() {
+                    if (document.mainForm.inputText.value.length > 0) {
+                        document.mainForm.inputfile.value = document.mainForm.inputfile.defaultValue;
+                    }
+                }
+            {% if presets|length > 0 %}
+            function OnChangePreset() {
+                var val = document.mainForm.presets.value;
+
+                if (val == '') {
+                    return true;  // If None is selected, do nothing...
+                }
+
+                var preset2tools = {};
+
+                {% for preset_name, tools_list in presets.items() -%}
+                preset2tools['{{ preset_name }}'] = new Set(['{{ "', '".join(tools_list[1]) | safe }}']);
+                {% endfor -%}
+
+                var currTools = preset2tools[val];
+
+                // Get all the checkboxes in order...
+                var fields = document.mainForm.tools.getElementsByTagName('input');
+                for(var i = 0; i < fields.length; ++i) {
+                    // ...and set appropriate checked states.
+                    fields[i].checked = currTools.has(fields[i].value);
+                }
+            }
+
+            function OnChangeCheckbBox() {
+                document.mainForm.presets.value = '';
+            }
+            {% else -%}
+            function OnChangeCheckbBox() {
+            }
+            {% endif -%}
+        </script>
+    </head>
+    <body>
+        <form name="mainForm" method="POST" onsubmit="return OnSubmitForm();" id="mainForm">
+           {%- if presets|length > 0 %}
+           <label for="presets">Available presets:</label><br/>
+           <select name="presets" id="presets" onchange="OnChangePreset()">
+               <option value="">None</option>
+               {% for preset_name, tool_name in presets.items() -%}
+               <option value="{{ preset_name }}">{{ tool_name[0] }}</option>
+               {% endfor -%}
+           </select><br/><br/>
+           {% endif -%}
+           <label for="tools">Available tools (see <a href="{{ doc_link }}">documentation</a> for more details on usage):</label><br/><br/>
+           <fieldset name="tools" id="tools" style="border: 0;">
+           {%- for tool_name, friendly_name in available_tools.items() %}
+               <input type="{{ tools_type }}" {% if tools_type != 'radio' %}onchange="OnChangeCheckbBox()" {% endif -%}name="availableTools" id="{{ tool_name }}" value="{{ tool_name }}"/><label for="{{ tool_name }}">{{ friendly_name }}</label><br/>
+           {%- endfor %}
+           </fieldset><br/>
+           {%- if tools_type != 'radio' %}
+           <label for="inputText">Input text or file:</label><br/><br/>
+           <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
+           <textarea autofocus="" rows="10" cols="80" placeholder="Enter text here..." form="mainForm" name="inputText" id="inputText" {% if tools_type != 'radio' %}onchange="OnChangeTextarea()" {% endif %}></textarea><br/>
+           <label for="outputMode">Output mode:</label><br/>
+           <select name="outputMode" id="outputMode">
+               <option value="display">Display below</option>
+               <option value="download">Download</option>
+           </select><br/><br/>
+           {% else %}
+           <label for="inputText">Input word:</label><br/><br/>
+               <input type="text" name="inputText" id="inputText" placeholder="Enter word here..." /><br/><br/>
+           <input type="hidden" name="outputMode" id="outputMode" value="display" />
+           {% endif -%}
+           <input type="submit" name="submit" value="Process"><br/>
+        </form>
+    <p>Result: </p>
+    <div id="result"></div>
+    </body>
+</html>
