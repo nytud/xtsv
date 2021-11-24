@@ -27,11 +27,11 @@ setuptools.setup(
     description='A generic TSV-style format based intermodular communication framework and REST API',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/dlt-rilmta/xtsv',
+    url='https://github.com/nytud/xtsv',
     packages=setuptools.find_packages(exclude=['tests']),
     install_requires=[
         'werkzeug',
-        'Flask',
+        'flask',
         'flask-restful',
     ],
     classifiers=[

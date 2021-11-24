@@ -134,7 +134,7 @@ In agreement with the license, everybody is free to create a new compatible modu
 The following requirements apply for a new module:
 
 1. It must provide (at least) the mandatory API (see
-[emDummy](https://github.com/dlt-rilmta/emdummy) for a well-documented
+[emDummy](https://github.com/nytud/emdummy) for a well-documented
 example)
 2. It must conform to the (to be defined) field-name conventions and the
 format conventions
@@ -144,7 +144,7 @@ __This is not legal advice!__)
 
 The following technical steps are needed to insert the new module into the pipeline:
 
-1. Add the new module package as a requirement to the requirements.txt of the pipeline's main repository (e.g. [emtsv](https://github.com/dlt-rilmta/emtsv))
+1. Add the new module package as a requirement to the requirements.txt of the pipeline's main repository (e.g. [emtsv](https://github.com/nytud/emtsv))
 2. Insert the configuration in `config.py`:
 
     ```python
@@ -193,9 +193,9 @@ To extend the toolchain with new modules, [just add new modules to
 
 Some examples of the realised applications:
 
-- [`emtsv`](https://github.com/dlt-rilmta/emtsv)
-- [`emmorphpy`](https://github.com/dlt-rilmta/emmorphpy/)
-- [`HunTag3`](https://github.com/dlt-rilmta/HunTag3)
+- [`emtsv`](https://github.com/nytud/emtsv)
+- [`emmorphpy`](https://github.com/nytud/emmorphpy/)
+- [`HunTag3`](https://github.com/nytud/HunTag3)
 
 ### Command-line interface
 
@@ -342,7 +342,7 @@ to run with a prepared wsgi file .
     # Alternative2: Run REST API debug server
     app = pipeline_rest_api(name='TEST', available_tools=tools, presets=presets,
                             conll_comments=opts.conllu_comments, singleton_store=singleton_store_factory(),
-                            form_title='TEST TITLE', doc_link='https://github.com/dlt-rilmta/xtsv',
+                            form_title='TEST TITLE', doc_link='https://github.com/nytud/xtsv',
                             output_header=opts.output_header)
     # And run the Flask debug server separately
     app.run()
