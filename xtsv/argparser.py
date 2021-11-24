@@ -33,6 +33,8 @@ def parser_skeleton(*args, **kwargs):
                         help='Use output file instead of STDOUT (only allowed when at least one task is specified!)',
                         metavar='FILE')
 
+    add_bool_arg(parser, 'rest', 'Run the REST server. This option supresses any input or output (see -i and -o)',
+                 has_negative_variant=False)
     add_bool_arg(parser, 'verbose', 'Show warnings')
     add_bool_arg(parser, 'conllu-comments', 'Enable CoNLL-U style comments (lines starting with "# ")')
     add_bool_arg(parser, 'output-header', 'Disable header for output')
