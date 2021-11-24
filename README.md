@@ -42,7 +42,7 @@ If you use this library, please cite the following paper:
 
 ## Requirements
 
-- Python 3.5 <=
+- Python 3.7 <=
 - [Optional, if required by any module] PyJNIus and OpenJDK 11 JDK
 
 ## API documentation

@@ -187,8 +187,8 @@ class RESTapp(Resource):
 
         self._doc_link = doc_link
 
-        # Dict of default tool names -> friendly names # TODO: OrderedDict is not necessary for >= Python 3.7!
-        self._available_tools = OrderedDict((names[0], tool_params[2]) for tool_params, names in internal_apps)
+        # Dict of default tool names -> friendly names
+        self._available_tools = {names[0]: tool_params[2] for tool_params, names in internal_apps}
         # atexit.register(self._internal_apps.__del__)  # For clean exit...
 
     def get(self, path=''):
