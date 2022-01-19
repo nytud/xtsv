@@ -75,15 +75,19 @@ def process(stream, internal_app, conll_comments=False, default_pass_header=True
             curr_line = track_stream['curr_line_number'] - (len(sen) + 1)
             try:
                 tokens = internal_app.process_sentence(sen, field_values)
-                for tok in tokens:
-                    curr_line += 1
-                    joined_tok = '{0}\n'.format('\t'.join(tok))
-                    if len(joined_tok.split('\t')) != len(field_names) // 2:
-                        raise ValueError(f'Number of fields expected: {len(field_names) // 2}.\n' +
-                                         'Number of fields in token: {0}.\n'.format(len(joined_tok.split('\t'))) +
-                                         'Invalid token:\n' + joined_tok)
-                    else:
-                        yield joined_tok
+                if getattr(internal_app, 'free_format_output', False):
+                    yield tokens
+                else:
+                    for tok in tokens:
+                        curr_line += 1
+                        joined_tok = '{0}\n'.format('\t'.join(tok))
+                        if len(joined_tok.split('\t')) != len(field_names) // 2:
+                            raise ValueError(f'Number of fields expected: {len(field_names) // 2}.\n' +
+                                             'Number of fields in token: {0}.\n'.
+                                                format(len(joined_tok.split('\t'))) +
+                                             'Invalid token:\n' + joined_tok)
+                        else:
+                            yield joined_tok
             except Exception as e:  # Catch every exception to add the file name and line number before reraise
                 import sys
                 raise type(e)('In "{0}" at {1}: {2}'.format(track_stream['file_name'], curr_line, str(e))).\
