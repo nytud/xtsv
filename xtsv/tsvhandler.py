@@ -72,7 +72,10 @@ def process(stream, internal_app, conll_comments=False, default_pass_header=True
                 import sys
                 raise type(e)('In "{0}" at {1}: {2}'.format(track_stream['file_name'], curr_line, str(e))).\
                     with_traceback(sys.exc_info()[2])
-            yield '\n'
+            
+            # Finalizers can suppress sentence-final newlines in their output.
+            if getattr(internal_app, 'add_newline_after_sentence', True):
+                yield '\n'
 
             if sen_count % 1000 == 0:
                 logger.info('{0}...'.format(sen_count))
