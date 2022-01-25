@@ -14,6 +14,10 @@ def process_header(fields, source_fields, target_fields, track_stream):
         raise HeaderError('Input ({0}) does not have the required field names ({1}). '
                           'The following field names found: {2}'.
                           format(track_stream['file_name'], sorted(source_fields), fields))
+    duplicate_fields = set(fields).intersection(set(target_fields))
+    if duplicate_fields:
+        raise HeaderError('Input ({0}) already contains one or more target field names ({1}).'.
+                          format(track_stream['file_name'], sorted(duplicate_fields)))
     fields.extend(target_fields)                                    # Add target fields when apply (only for tagging)
     field_names = {name: i for i, name in enumerate(fields)}        # Decode field names
     field_names.update({i: name for i, name in enumerate(fields)})  # Both ways...
@@ -65,9 +69,25 @@ def process(stream, internal_app, conll_comments=False, default_pass_header=True
             sen_count += 1
             if len(comment) > 0:
                 yield comment
-            curr_line = track_stream['curr_line_number']
+
+            # Assuming that process_sentence() doesn't add tokens to or remove tokens from the sentence,
+            # otherwise these line numbers will be inaccurate.
+            curr_line = track_stream['curr_line_number'] - (len(sen) + 1)
             try:
-                yield from ('{0}\n'.format('\t'.join(tok)) for tok in internal_app.process_sentence(sen, field_values))
+                tokens = internal_app.process_sentence(sen, field_values)
+                if getattr(internal_app, 'free_format_output', False):
+                    yield tokens
+                else:
+                    for tok in tokens:
+                        curr_line += 1
+                        joined_tok = '{0}\n'.format('\t'.join(tok))
+                        if len(joined_tok.split('\t')) != len(field_names) // 2:
+                            raise ValueError(f'Number of fields expected: {len(field_names) // 2}.\n' +
+                                             'Number of fields in token: {0}.\n'.
+                                                format(len(joined_tok.split('\t'))) +
+                                             'Invalid token:\n' + joined_tok)
+                        else:
+                            yield joined_tok
             except Exception as e:  # Catch every exception to add the file name and line number before reraise
                 import sys
                 raise type(e)('In "{0}" at {1}: {2}'.format(track_stream['file_name'], curr_line, str(e))).\
