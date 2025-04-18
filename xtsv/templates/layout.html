@@ -1,204 +1,1336 @@
 <!DOCTYPE html>
 <html lang="en-US">
-    <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>{{ title }}</title>
-        <style>
-            body, html {
-                width: 100%;
-                height: 100%;
-                margin: 0;
-                padding: 10px;
-                display: table;
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>{{ title }}</title>
+    <style>
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 10px;
+            display: table;
+        }
+
+        body {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        div {
+            white-space: nowrap; /* Prevents Wrapping */
+            overflow-x: hidden;
+            overflow-y: hidden;
+        }
+
+        #result {
+            display: none;
+        }
+
+        .node--internal text {
+          text-shadow: 0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;
+        }
+
+        .resDiv {
+            border-bottom: 1px solid black;
+        }
+
+        .download-button {
+            margin-top: 10px;
+        }
+
+        .footer {
+            height: 300px;
+        }
+
+        #tools {
+            border: 0;
+        }
+
+        #basenp-checkbox-label {
+            text-decoration: underline;
+            text-decoration-color: forestgreen;
+        }
+
+        #ner-checkbox-label {
+            text-decoration: underline;
+            text-decoration-color: hotpink;
+        }
+
+        #maxnp-checkbox-label {
+            text-decoration: underline;
+            text-decoration-color: blue;
+        }
+
+
+    </style>
+    <!-- Regex package for processing cons-tree output.-->
+    <script src="https://unpkg.com/xregexp/xregexp-all.js"></script>
+    <!-- D3.js visualization package -->
+    <script src="https://d3js.org/d3.v6.js"></script>
+    <script>
+        /* jshint esversion: 9 */
+        function OnSubmitForm() {
+
+            // INNER FUNCTIONS
+            function initDownload(blob) {
+                let link = document.createElement("a");  // Initiate download
+                link.href = window.URL.createObjectURL(blob);
+                link.download = "output.txt";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             }
-            body {
-                display: table-cell;
-                vertical-align: middle;
+
+            function displayedContentMain(text) {
+
+                function mouseover(event) {
+                    focus.style("opacity", 1);
+                    focus.html("<p>" + this.getAttribute("value") + "</p>");
+                    focus
+                        .style("left", event.pageX + "px")
+                        .style("top", (event.pageY - 100) + "px");
+                }
+
+                let focus = d3.select("#result")
+                    .append("div")
+                    .style("opacity", 0)
+                    .style("background-color", "white")
+                    .style("border", "solid")
+                    .style("border-width", "2px")
+                    .style("border-radius", "5px")
+                    .style("padding", "5px")
+                    .style("position", "absolute");
+
+                const vizButtonTrayDiv = document.getElementById("viz-result-button-tray");
+                if (vizButtonTrayDiv) {
+                    vizButtonTrayDiv.innerHTML = "";
+                }
+
+                // Split response text into sentence Objects
+                let [header, sentences] = generateSentenceData(text);
+                if (sentences === false) {
+                    document.getElementById("raw-results").innerHTML = text;
+                    document.getElementById("raw-results").style.display = "block";
+                    document.getElementById("display-select").style.display = "none";
+                    return;
+                }
+
+                const renderHeaders = ["lemma", "xpostag", "upostag", "feats"];
+                const availableHeaders = renderHeaders.filter(value => header.includes(value));
+                for (let row of availableHeaders) {
+                    vizButtonTrayDiv.innerHTML += `<input type="checkbox" id="viz-result-${row}" name="${row}">
+                                                   <label for="viz-result-${row}">${row}</label>`;
+                }
+
+                // ConsTree SVGs are saved as re-rendering always slightly changes them
+                consTrees = [];
+
+                setVizDisplays(true);  // Make all result divs display true, for SVG rendering
+                renderVizResults(sentences, header, text, focus, mouseover, true);  // Generate visualizations
+
+                // Set listeners for Viz checkboxes
+                for (let labelGroup of availableHeaders) {
+                    let checkbox = document.getElementById("viz-result-" + labelGroup);
+                    if (checkbox !== null) {
+                        checkbox.addEventListener("change", function () {
+                            setVizDisplays(true);  // Make all result divs display true, for SVG rendering
+                            let uncheckedRows = getUncheckedVizRows();
+                            let useHeaders = header.filter(value => !uncheckedRows.includes(value));
+                            // Generate visualizations
+                            renderVizResults(sentences, useHeaders, text, focus, mouseover, false);
+                        });
+                    }
+                }
             }
-            div {
-                white-space: nowrap; /* Prevents Wrapping */
 
-                overflow-x: hidden;
-                overflow-y: hidden;
+            function writeError(msg) {
+                let text;
+                try {
+                    // In case error is server failure JSON message
+                    let error_message = JSON.parse(msg);
+                    text = error_message.message;
+                } catch (e) {
+                    // In case error is wrong input HTML message
+                    let div = document.createElement("div");
+                    div.innerHTML = msg.trim();
+                    text = div.getElementsByTagName("p")[0].innerHTML;
+                }
+                document.getElementById("error").innerHTML = `<p>${text}</p>`;
             }
-        </style>
-        <script>
-            function OnSubmitForm() {
-                    var text = document.mainForm.inputText.value;
 
-                    if (text.length == 0 && (document.getElementsByName('inputfile').length == 0 ||
-                        document.mainForm.inputfile.files.length == 0)) {
-                        alert('Input is empty!');
-                        return false;
-                    }
-
-                    var url = '{{ base_url }}';
-
-                    var none_are_checked = true;
-                    // Get all the checkboxes in order...
-                    var fields = document.mainForm.tools.getElementsByTagName('input');
-                    for(var i = 0; i < fields.length; ++i) {
-                        if(fields[i].checked) {
-                            // ...and append checked ones to the URL to get the proper tool list!
-                            url += '/' + fields[i].value;
-                            none_are_checked = false;
-                        }
-                    }
-
-                    if (none_are_checked) {
-                        alert('At least one tool must be selected!');
-                        return false;
-                    }
-
-                    document.mainForm.submit.disabled = true;  // Prevent double submit!
-
-                    if (fields[0].type != 'radio') {
-                        var data = new FormData();
-
-                        if (document.mainForm.inputfile.files.length > 0) {
-                            var file = document.mainForm.inputfile.files[0]
-                            data.append('file', file, file.name);
-                        }
-                        else {
-                            var blob = new Blob([text], {type:'text/plain'});
-                            data.append('file', blob, 'input.txt');
-                        }
-                        if (document.mainForm.outputMode.value == 'display') {
-                            data.append('toHTML', true);
-                        }
-                    }
-                    else {
-                        url += '/' + text;
-                    }
-
-                    function initDownload(blob) {
-                        var link = document.createElement('a');  // Initiate download
-                        link.href = window.URL.createObjectURL(blob);
-                        link.download = 'output.txt';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    }
-
-                    function writeError(msg) {
-                        var div = document.createElement('div');
-                        div.innerHTML = msg.trim();
-                        var text =  div.getElementsByTagName('p')[0].innerHTML;
-                        document.getElementById('result').innerHTML = text;
-                    }
-
-                    function pprint(text) {
-                        if (fields[0].type != 'radio') {
-                            return text;
-                        }
-                        else {
-                            return '<pre>' + text + '</pre>';
-                        }
-                    }
-
-                    var fetchHandle = function(response) {
-                        if (response.ok) {
-                            if (document.mainForm.outputMode.value == 'display') {  // ...write result!
-                                response.text().then(text =>
-                                                     document.getElementById('result').innerHTML = pprint(text));
+            let fetchHandle = function (response) {
+                document.getElementById("result").style.display = "none";
+                document.getElementById("error").innerHTML = "<p>loading results...</p>";
+                if (response.ok) {
+                    const choice = document.mainForm.outputMode.value;
+                    if (choice === "download") {
+                        document.getElementById("error").innerHTML = "";
+                        response.blob().then(resp => initDownload(resp));
+                    } else {  // Display
+                        response.text().then(text => {
+                            document.getElementById("error").innerHTML = "";
+                            document.getElementById("result").style.display = "block";
+                            if (fields[0].type === "radio") {  // Only if radio
+                                document.getElementById("raw-results").innerHTML = `<pre>${text}</pre>`;
+                                document.getElementById("display-select").style.display = "none";
+                            } else {
+                                // Single line header response is interpreted as server killed
+                                if ((text.match(new RegExp("<br/>", "g")) || []).length === 1
+                                    && text.split("\t").length > 2) {
+                                    alert("Invalid response from backend server!");
+                                } else {
+                                    displayedContentMain(text);
+                                }
                             }
-                            else {
-                                document.getElementById('result').innerHTML = '';  // Purge possible previous result
-                                response.blob().then(resp => initDownload(resp));
-                            }
-                        }
-                        else {
-                            response.text().then(writeError);
-                        }
+                        });
+                    }
+                } else {
+                    document.getElementById("result").style.display = "none";
+                    document.getElementById("error").innerHTML = "";
+                    if (response instanceof TypeError) {
+                        alert("No response from backend server!");
+                    } else {
+                        response.text().then(writeError);
+                    }
+                }
+                document.mainForm.submit.disabled = false;  // Re-enable submit!
+            };
 
-                        document.mainForm.submit.disabled = false;  // Reenable submit!
-                    };
-                    if (fields[0].type != 'radio') {
-                        var params = {method: 'POST', credentials: 'include', body: data};
-                    }
-                    else {
-                        var params = {method: 'GET', credentials: 'include'};
-                    }
-                    fetch(url, params).then(fetchHandle).catch(fetchHandle);
-                    return false; // Do not submit actually, as fetch has already done it...
+            // RUNNING
+            let text = document.mainForm.inputText.value;
+            if (text.length === 0 && (document.getElementsByName("inputfile").length === 0 ||
+                document.mainForm.inputfile.files.length === 0)) {
+                alert("Input is empty!");
+                return false;
+            }
+
+            let url = "{{ base_url }}";
+            let none_are_checked = true;
+
+            // Get all the checkboxes in order...
+            let fields = document.mainForm.tools.getElementsByTagName("input");
+
+            for (let i = 0; i < fields.length; i++) {
+                if (fields[i].checked) {
+                    // ...and append checked ones to the URL to get the proper tool list!
+                    url += "/" + fields[i].value;
+                    none_are_checked = false;
                 }
-                function OnChangeFile() {
-                    if (document.mainForm.inputfile.files.length > 0) {
-                        document.mainForm.inputText.value = '';
-                    }
+            }
+
+            if (none_are_checked) {
+                alert("At least one tool must be selected!");
+                return false;
+            }
+            document.mainForm.submit.disabled = true;  // Prevent double submit!
+            let params;
+            if (fields[0].type !== "radio") {
+                let data = new FormData();
+                if (document.mainForm.inputfile.files.length > 0) {
+                    let file = document.mainForm.inputfile.files[0];
+                    data.append("file", file, file.name);
+                } else {
+                    let blob = new Blob([text], {type: "text/plain"});
+                    data.append("file", blob, "input.txt");
                 }
-                function OnChangeTextarea() {
-                    if (document.mainForm.inputText.value.length > 0) {
-                        document.mainForm.inputfile.value = document.mainForm.inputfile.defaultValue;
-                    }
+                if (document.mainForm.outputMode.value !== "download") {
+                    data.append("toHTML", true);
                 }
-            {% if presets|length > 0 %}
+                params = {method: "POST", credentials: "include", body: data};
+            } else {
+                url += "/" + text;
+                params = {method: "GET", credentials: "include"};
+            }
+
+            fetch(url, params).then(fetchHandle).catch(fetchHandle);
+            return false;  // Do not submit actually, as fetch has already done it...
+        }  // END OF OnSubmitForm
+
+        function OnChangeFile() {
+            if (document.mainForm.inputfile.files.length > 0) {
+                document.mainForm.inputText.value = "";
+            }
+        }
+
+        function OnChangeTextarea() {
+            if (document.mainForm.inputText.value.length > 0) {
+                document.mainForm.inputfile.value = document.mainForm.inputfile.defaultValue;
+            }
+        }
+
+        {% if presets | length > 0 %}
             function OnChangePreset() {
-                var val = document.mainForm.presets.value;
+                let val = document.mainForm.presets.value;
 
-                if (val == '') {
+                if (val === "") {
                     return true;  // If None is selected, do nothing...
                 }
 
-                var preset2tools = {};
+                let preset2tools = {};
 
                 {% for preset_name, tools_list in presets.items() -%}
-                preset2tools['{{ preset_name }}'] = new Set(['{{ "', '".join(tools_list[1]) | safe }}']);
+                preset2tools["{{ preset_name }}"] = new Set(["{{ '", "'.join(tools_list[1]) | safe }}"]);
                 {% endfor -%}
 
-                var currTools = preset2tools[val];
+                let currTools = preset2tools[val];
 
                 // Get all the checkboxes in order...
-                var fields = document.mainForm.tools.getElementsByTagName('input');
-                for(var i = 0; i < fields.length; ++i) {
-                    // ...and set appropriate checked states.
+                let fields = document.mainForm.tools.getElementsByTagName("input");
+                for (let i = 0; i < fields.length; i++) {
+                    // ...and set appropriate checked states
                     fields[i].checked = currTools.has(fields[i].value);
                 }
             }
 
             function OnChangeCheckbBox() {
-                document.mainForm.presets.value = '';
+                document.mainForm.presets.value = "";
             }
-            {% else -%}
+        {% else -%}
             function OnChangeCheckbBox() {
             }
-            {% endif -%}
-        </script>
-    </head>
-    <body>
-        <form name="mainForm" method="POST" onsubmit="return OnSubmitForm();" id="mainForm">
-           {%- if presets|length > 0 %}
-           <label for="presets">Available presets:</label><br/>
-           <select name="presets" id="presets" onchange="OnChangePreset()">
-               <option value="">None</option>
-               {% for preset_name, tool_name in presets.items() -%}
-               <option value="{{ preset_name }}">{{ tool_name[0] }}</option>
-               {% endfor -%}
-           </select><br/><br/>
-           {% endif -%}
-           <label for="tools">Available tools (see <a href="{{ doc_link }}">documentation</a> for more details on usage):</label><br/><br/>
-           <fieldset name="tools" id="tools" style="border: 0;">
-           {%- for tool_name, friendly_name in available_tools.items() %}
-               <input type="{{ tools_type }}" {% if tools_type != 'radio' %}onchange="OnChangeCheckbBox()" {% endif -%}name="availableTools" id="{{ tool_name }}" value="{{ tool_name }}"/><label for="{{ tool_name }}">{{ friendly_name }}</label><br/>
-           {%- endfor %}
-           </fieldset><br/>
-           {%- if tools_type != 'radio' %}
-           <label for="inputText">Input text or file:</label><br/><br/>
-           <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()" /><br/><br/>
-           <textarea autofocus="" rows="10" cols="80" placeholder="Enter text here..." form="mainForm" name="inputText" id="inputText" {% if tools_type != 'radio' %}onchange="OnChangeTextarea()" {% endif %}></textarea><br/>
-           <label for="outputMode">Output mode:</label><br/>
-           <select name="outputMode" id="outputMode">
-               <option value="display">Display below</option>
-               <option value="download">Download</option>
-           </select><br/><br/>
-           {% else %}
-           <label for="inputText">Input word:</label><br/><br/>
-               <input type="text" name="inputText" id="inputText" placeholder="Enter word here..." /><br/><br/>
-           <input type="hidden" name="outputMode" id="outputMode" value="display" />
-           {% endif -%}
-           <input type="submit" name="submit" value="Process"><br/>
-        </form>
+        {% endif -%}
+
+    function renderVizResults(sentences, header, text, focus, mouseover, start_state) {
+        // Set NP-NER display globals
+        if (start_state) {
+            NERNPState.ner = "block";
+            NERNPState.basenp = "block";
+            NERNPState.maxnp = "block";
+        }
+
+        // Create container divs and render visualizations
+        addNerNpCheckboxes(header);
+
+        document.getElementById("raw-results").innerHTML = text;
+
+        // Create visualizations for each sentence separately
+        for (let i = 0; i < sentences.length; i++) {
+            visualizeSentenceData(sentences[i], i, header, start_state);
+        }
+
+        // Make sure WORD visualisation is selected if no Cons or Dep is created
+            if (document.getElementById("dep-display").disabled === true &&
+                document.getElementById("cons-display").disabled === true) {
+                document.getElementById("word-display").checked = true;
+            setVizDisplays();
+        }
+
+        setHoverLongTexts(mouseover, focus, header);  // Set values for truncated text tooltip
+        setVizDisplays(false);  // Only show checked result div
+    }
+
+    function visualizeSentenceData(sentenceData, i, header, start_state) {
+        // Create SVG visualizations for single sentence data
+
+        const wordSize = 16;  // Change this for depTree and words text size
+        const spaceBetweenText = 70;  // Change this for space between words
+        const margin = {top: 20, right: 50, bottom: 20, left: wordSize * 5};
+
+        // Get points data for SVG drawing (coordinates, heights, widths, etc.) + width of SVG + Levels data for DepTree
+        const data = generatePointsData(sentenceData, margin, spaceBetweenText, wordSize);
+
+        let pointsData = data[0],
+            svgWidth = margin.left + data[1] + margin.right;
+
+        // Draw SVG for words + tokens, xpos, upos, feats --> this SVG gets reused by Dep+Cons visualizations
+        const wordsResultsDiv = document.getElementById("word-results");
+        let wordsDiv = document.createElement("div");
+        wordsDiv.setAttribute("class", "resDiv");
+        wordsResultsDiv.append(wordsDiv);
+        addSvgDownloadButton(wordsDiv);
+        const wordsSvg = createWordsSvg(pointsData, wordsDiv, wordSize, margin, spaceBetweenText, header, svgWidth);
+
+        // Draw Dep-tree
+        const depRadioButton = document.getElementById("dep-display");
+        if (["deprel", "head", "id"].every(r => header.includes(r))) {
+            pointsData = generateLevels(pointsData);
+            let depDiv = document.createElement("div");
+            depDiv.setAttribute("class", "resDiv");
+            document.getElementById("dep-results").append(depDiv);
+            addSvgDownloadButton(depDiv);
+            let depSvg = createDepTree(pointsData, wordsSvg, margin, wordSize);
+            depDiv.append(depSvg.node());
+            depRadioButton.disabled = false;
+            if (start_state) {
+                depRadioButton.checked = true;
+            }
+
+        } else {
+            depRadioButton.disabled = true;
+        }
+
+        // Draw Cons-tree
+        const consRadioButton = document.getElementById("cons-display");
+        if (header.includes("cons")) {
+            let consDiv = document.createElement("div");
+            consDiv.setAttribute("class", "resDiv");
+            document.getElementById("cons-results").append(consDiv);
+            addSvgDownloadButton(consDiv);
+            let consSvg = createConsTree(sentenceData, wordsSvg, i);
+            consDiv.append(consSvg.node());
+            consRadioButton.disabled = false;
+            if (start_state && depRadioButton.disabled === true) {
+                consRadioButton.checked = true;
+            }
+        } else {
+            consRadioButton.disabled = true;
+        }
+    }
+
+    function getUncheckedVizRows() {
+        // Select all checkboxes
+        const checkboxes = document.querySelectorAll('#viz-result-button-tray input[type="checkbox"]');
+
+        // Filter checkboxes to find checked ones and map to their IDs
+        // Log the IDs of the checked checkboxes
+        return Array.from(checkboxes)
+        .filter(checkbox => !checkbox.checked)
+        .map(checkbox => checkbox.name);
+
+    }
+
+    function generateSentenceData(text) {
+        // Split response text into sentence Objects
+        let header,
+            sliceFrom,
+            splitText;
+
+        splitText = text.split("<br/>");  // Split emTSV text by lines
+
+        if (text.slice(0, 4) === "form") {
+            header = splitText[0].split("\t");
+            sliceFrom = 1;
+
+        } else {
+
+            let selectedPipes = [];
+            for (let input of document.querySelectorAll("#tools input[type=checkbox]:checked")) {
+                selectedPipes.push(input.value);
+            }
+            if (selectedPipes.includes("gate-conv")) {  // GATE XML --> only raw text
+                return [false, false];
+            }
+            if (selectedPipes.includes("conll")) {  // CoNLL-U format --> no headers
+                header = ["id", "form", "lemma", "upos", "xpos", "feats", "head", "deprel", "deps", "misc"];
+            }
+            sliceFrom = 0;
+        }
+
+        for (let preferableHeader of ["NP-BIO-FIXED", "NER-BIO-FIXED"]) {  // If "FIXED" versions are included, filter
+
+            if (header.includes(preferableHeader)) {
+                header.forEach((item, i) => {
+                    if (item === preferableHeader.slice(0, -6)) {
+                        header[i] = false;
+                    } else if (item === preferableHeader) {
+                        header[i] = item.slice(0, -6);
+                    }
+                });
+            }
+        }
+
+        let lines = splitText.slice(sliceFrom, splitText.length);
+
+        // TODO emUDPipe contains no ID column --> has to be added for DepTree functionality
+        if (!header.includes("id") && ["deprel", "head"].every(r => header.includes(r))) {
+            let idCount = 1;
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                if (line === "\n") {  // Reset on new sentence
+                    idCount = 1;
+                } else {
+                    lines[i] = line + "\t" + idCount;  // Manually append ID to end of line
+                    idCount++;
+                }
+            }
+            header.push("id");
+        }
+
+        let sentences = [],
+            sentence = [];
+
+
+        for (let line of lines) {
+            if (line === "\n" && sentence.length > 0) {  // Sentences are separated by empty line
+                sentences.push(sentence);
+                sentence = [];
+            } else {
+                let splitLine = line.split("\t");
+                if (splitLine.length === header.length) {
+                    let newDict = Object.fromEntries(header.map((key, index) => {
+                            if (key !== false) {
+                                return [key, splitLine[index]];
+                            } else {
+                                return false;
+                            }
+                        }).filter((e) => e !== false));
+                    newDict.form = newDict.form.trimStart();
+                    sentence.push(newDict);
+                }
+            }
+        }
+
+        header = header.filter((e) => e !== false);
+        return [header, sentences];
+    }
+    </script>
+</head>
+<body>
+<form name="mainForm" method="POST" onsubmit="event.preventDefault(); return OnSubmitForm();" id="mainForm">
+    {%- if presets|length > 0 %}
+        <label for="presets">Available presets:</label><br/>
+        <select name="presets" id="presets" onchange="OnChangePreset()">
+            <option value="">None</option>
+            {% for preset_name, tool_name in presets.items() -%}
+                <option value="{{ preset_name }}">{{ tool_name[0] }}</option>
+            {% endfor -%}
+        </select><br/><br/>
+    {% endif -%}
+    <label for="tools">Available tools (see <a href="{{ doc_link }}">documentation</a> for more details on
+        usage):</label><br/><br/>
+    <fieldset name="tools" id="tools">
+        {%- for tool_name, friendly_name in available_tools.items() %}
+            <input type="{{ tools_type }}"
+                {% if tools_type != "radio" %}onchange="OnChangeCheckbBox()" {% endif -%}name="availableTools"
+                    id="{{ tool_name }}" value="{{ tool_name }}"/>
+            <label for="{{ tool_name }}">{{ friendly_name }}</label><br/>
+        {%- endfor %}
+    </fieldset>
+    <br/>
+    {%- if tools_type != "radio" %}
+        <label for="inputText">Input text or file:</label><br/><br/>
+        <input type="file" id="inputfile" name="inputfile" onchange="OnChangeFile()"/><br/><br/>
+        <textarea autofocus="" rows="10" cols="80" placeholder="Enter text here..." form="mainForm" name="inputText"
+            id="inputText" {% if tools_type != "radio" %}onchange="OnChangeTextarea()" {% endif %}></textarea>
+        <br/>
+        <label for="outputMode">Output mode:</label><br/>
+        <select name="outputMode" id="outputMode">
+            <option value="display">Display</option>
+            <option value="download">Download</option>
+        </select><br/><br/>
+    {% else %}
+        <label for="inputText">Input word:</label><br/><br/>
+        <input type="text" name="inputText" id="inputText" placeholder="Enter word here..."/><br/><br/>
+        <input type="hidden" name="outputMode" id="outputMode" value="display"/>
+    {% endif -%}
+    <input type="submit" name="submit" value="Process"><br/>
+</form>
+<div id="error"></div>
+<div id="result">
     <p>Result: </p>
-    <div id="result"></div>
-    </body>
+    <div id="display-select">
+        <form onclick="setVizDisplays(false)">
+            <input type="radio" id="raw-display" name="display-selection" value="raw-results" checked>
+            <label for="raw-display">RAW</label>
+            <input type="radio" id="word-display" name="display-selection" value="word-results">
+            <label for="word-display">WORD</label>
+            <input type="radio" id="dep-display" name="display-selection" value="dep-results">
+            <label for="dep-display">DEP</label>
+            <input type="radio" id="cons-display" name="display-selection" value="cons-results">
+            <label for="cons-display">CONS</label>
+        </form>
+        <br/>
+    </div>
+    <div id="viz-result">
+        <div id="viz-result-button-tray"></div>
+        <br/>
+        <div id="viz-result-render">
+            <div id="viz-result-render-button-tray"></div>
+            <div id="viz-result-render-content">
+                <div id="raw-results"></div>
+                <div id="word-results"></div>
+                <div id="dep-results"></div>
+                <div id="cons-results"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="footer"></div>
+<script>
+    /* jshint esversion: 9 */
+    // Visualization util functions
+    function setVizDisplays(newProcess) {
+        // If a div display is set to none, the d3 SVGs cannot render properly. Therefore, all result divs are
+        //  first displayed and then hidden instantly except the selected one
+        if (newProcess) {
+
+            // Purge possible previous results (if all is true, purge raw and buttons too)
+            let clearIds = ["word-results", "cons-results", "dep-results", "raw-results",
+                            "viz-result-render-button-tray"];
+            let tag;
+            for (let id of clearIds) {
+                tag = document.getElementById(id);
+                if (tag !== null) {
+                    tag.innerHTML = "";
+                }
+            }
+        }
+        let checkedDisplaySelection = document.querySelector('input[name="display-selection"]:checked').value;
+        let vizCheckboxes = document.getElementById("viz-result-button-tray");
+        let NPNERCheckboxes = document.getElementById("viz-result-render-button-tray");
+        if (checkedDisplaySelection === "raw-results") {
+            vizCheckboxes.style.display = "none";
+            NPNERCheckboxes.style.display = "none";
+        } else {
+            vizCheckboxes.style.display = "block";
+            NPNERCheckboxes.style.display = "block";
+        }
+        for (let id of ["raw-results", "word-results", "dep-results", "cons-results"]) {
+            if (checkedDisplaySelection === id || newProcess === true) {
+                document.getElementById(id).style.display = "block";
+            } else {
+                document.getElementById(id).style.display = "none";
+            }
+        }
+    }
+
+    function generatePointsData(incomingSentenceData, margin, spaceBetweenText, wordSize) {
+        // Calculate word positions, DepTree levels + arch directions, and sizes according to sentence data
+        let sentenceData = [ ...incomingSentenceData ];  // Create shallow copy of sentence data
+
+        let tempSvg = d3.select("body").append("svg").attr("width", 1000).attr("height", 100);
+
+        let svgWidth = margin.left;
+
+        for (let tokenObj of sentenceData) {
+            let head = parseInt(tokenObj.head),
+                tokenID = parseInt(tokenObj.id);
+
+            let direction = head > tokenID ? 1 : -1;
+            let tempWord = tempSvg
+                .append("text")
+                .style("font-size", wordSize + "px")
+                .text(tokenObj.form);
+            let textBBox = tempWord.node().getBBox();
+            tokenObj.id = tokenID;
+            tokenObj.x = svgWidth + textBBox.width / 2;  // Word x-axis position
+            tokenObj.direction = direction;  // Outgoing DepTree arch direction
+            tokenObj.form_width = textBBox.width;  // Width of word text
+            tokenObj.form_height = textBBox.height;  // Height of word text
+            tokenObj.head = head;  // ID of target DepTree arch
+
+            svgWidth += textBBox.width + spaceBetweenText;
+
+            tempWord.remove();
+        }
+
+        tempSvg.remove();
+        const sortedSentenceData = sentenceData.reduce((a, v, i) => ({ ...a, [i + 1]: v}), {});
+        return [sortedSentenceData, svgWidth];
+    }
+
+    function addNerNpCheckboxes(header) {
+        let buttonTray = document.getElementById("viz-result-render-button-tray");
+        buttonTray.innerHTML = "";
+        if (header.includes("NER-BIO")) {
+
+            buttonTray.innerHTML += `<input type="checkbox" id="ner-checkbox" onclick="handleNERorNPChange(event)"
+                    ${NERNPState.ner === "block" ? "checked" : ""}>
+                                        <label for="ner-checkbox" id="ner-checkbox-label">Named Entities</label>`;
+        }
+
+        if (header.includes("BASE-NP-BIO")) {
+            buttonTray.innerHTML += `<input type="checkbox" id="basenp-checkbox" onclick="handleNERorNPChange(event)"
+                    ${NERNPState.basenp === "block" ? "checked" : ""}>
+                                     <label for="basenp-checkbox" id="basenp-checkbox-label">Base Noun Phrases</label>`;
+        }
+
+        if (header.includes("NP-BIO")) {
+            buttonTray.innerHTML += `<input type="checkbox" id="maxnp-checkbox" onclick="handleNERorNPChange(event)"
+                    ${NERNPState.maxnp === "block" ? "checked" : ""}>
+                                       <label for="maxnp-checkbox" id="maxnp-checkbox-label">Max Noun Phrases</label>`;
+        }
+    }
+
+    // Words SVG functions
+    let NERNPState = {
+        "ner": "block",
+        "basenp": "block",
+        "maxnp": "block"
+    };
+
+    function setHoverLongTexts(mouseover, focus, header) {
+        // Add hover effect to truncated feats and xpostags in Words SVG
+        for (let col of ["feats", "xpostag"]) {
+            if (header.includes(col)) {
+                d3.selectAll("." + col)
+                    .on("mouseover", mouseover)
+                    .on("mouseleave", () => {
+                        focus.style("opacity", 0).style("top", "-1000px");  // Hide, and move out of window
+                    })
+                    .on("mousemove", (event) => {
+                        focus.style("left", event.pageX + "px")
+                            .style("top", (event.pageY - 100) + "px");} );
+            }
+        }
+    }
+
+    function getNPs(data, allNPs, npType) {
+        let npHolder = [];
+        for (let [tokenID, tokenObj] of Object.entries(data)) {
+            if (["B-NP", "1-NP", "S-NP"].includes(tokenObj[npType])) {
+                if (npHolder.length > 0) {  // If new NP begins right after previous NP
+                    allNPs.push(npHolder);
+                    npHolder = [];
+                }
+                npHolder.push(tokenID);
+            } else if (tokenObj["NP-BIO"] === "O" && npHolder.length > 0) {  // New non-NP
+                allNPs.push(npHolder);
+                npHolder = [];
+            } else if (tokenObj[npType] === "I-NP" || tokenObj[npType] === "E-NP") {  // End
+                npHolder.push(tokenID);
+            }
+        }
+        if (npHolder.length > 0) {
+            allNPs.push(npHolder);
+        }
+        return allNPs;
+    }
+
+    function getNERs(pointsData, allNERs) {
+        let nerHolder = [];
+        for (let [tokenID, tokenObj] of Object.entries(pointsData)) {
+            let [pos, type] = tokenObj["NER-BIO"].split("-");
+            if (pos === "1" || pos === "S" || pos === "E") {  // Standalone NER or end of NER
+                nerHolder.push([tokenID, type]);
+                allNERs.push(nerHolder);
+                nerHolder = [];
+            }
+            else if (pos === "B" || pos === "I") {  // Beginning of NER or inside NER
+                nerHolder.push([tokenID, type]);
+            }
+        }
+    }
+
+    function handleNERorNPChange(event) {
+        let code = event.target.id.split("-")[0],
+            vizTargetClassName = code + "-group";
+            targets = document.getElementsByClassName(vizTargetClassName);
+
+        Object.values(targets).forEach(target => {
+            let targetDisplay = target.style.display;
+            if (targetDisplay === "none") {
+                target.style.display = "block";
+                NERNPState[code] = "block";
+            } else if (targetDisplay === "block") {
+                target.style.display = "none";
+                NERNPState[code] = "none";
+            }
+        });
+    }
+
+    function createWordsSvg(pointsData, wordsDiv, wordSize, margin, spaceBetweenText, header, svgWidth) {
+        // Create SVG to copy elements from into DepTree and ConsTree and use as standalone
+        // Arbitrary height changed later
+        const svg = d3.select(wordsDiv).append("svg").attr("width", svgWidth).attr("height", 100);
+
+        // Get Max NPs
+        const maxNPs = [];
+        if (header.includes("NP-BIO")) {
+            getNPs(pointsData, maxNPs, "NP-BIO");
+        }
+
+        // Get Base NPs
+        const baseNPs = [];
+        if (header.includes("BASE-NP-BIO")) {
+            getNPs(pointsData, baseNPs, "BASE-NP-BIO");
+        }
+
+        // Get NERs
+        const NERs = [];
+        if (header.includes("NER-BIO")) {
+            getNERs(pointsData, NERs);
+        }
+
+        let tempDotDotDot = svg
+            .append("text")
+            .style("font-size", wordSize + "px")
+            .text(" ...");
+        const dotDotDotWidth = tempDotDotDot.node().getBBox().width;
+        tempDotDotDot.remove();
+
+        function truncateChars(text) {
+            text.each(function() {
+                let text = d3.select(this),
+                    letter_id = 0,
+                    letters = text.text().split("");
+                let space = text.attr("max-width"),
+                    x = text.attr("x"),
+                    y = text.attr("y"),
+                    tspan = text.text(null).append("tspan").attr("x", x).attr("y", y)
+                        .text(letters.slice(0, letter_id).join(""));
+                space = space - dotDotDotWidth * 2;  // Approximate width of " ..."
+                while ((tspan.node().getComputedTextLength() < space - 5) && (letter_id < letters.length + 1)) {
+                    letter_id += 1;
+                    tspan = text.text(null).append("tspan").attr("x", x).attr("y", y)
+                        .text(letters.slice(0, letter_id).join(""));
+                }
+                let ending = letter_id < letters.length ? "..." : "";
+                tspan.text(tspan.text() + ending);
+            });
+        }
+
+        let maxCharacterHeight = Math.max(...Object.values(pointsData).map((d) => d.form_height));
+        maxCharacterHeight = maxCharacterHeight + maxCharacterHeight / 5;  // In case only lower case chars are in form
+        const wordsG = svg.append("g").attr("class", "words-g");
+        const wordsY = margin.top + maxCharacterHeight / 5;
+
+        // Base NP lines
+        let BaseNPGroup = wordsG.append("g").attr("class", "basenp-group").style("display", NERNPState.basenp);
+        for (let NP of baseNPs) {
+            let startID = NP.slice(0, 1),
+                endID = NP.slice(-1);
+            BaseNPGroup.append("line")
+                .attr("stroke", "green")
+                .attr("stroke-width", wordSize / 4)
+                .attr("class", "np-viz")
+                .attr("x1", pointsData[startID].x - pointsData[startID].form_width / 2)
+                .attr("y1", margin.top+maxCharacterHeight / 5 + wordSize / 4)
+                .attr("x2", pointsData[endID].x + pointsData[endID].form_width / 2)
+                .attr("y2", margin.top + maxCharacterHeight / 5 + wordSize / 4)
+                .style("opacity", "0.5");
+        }
+
+        // Max NP lines
+        let MaxNPGroup = wordsG.append("g").attr("class", "maxnp-group").style("display", NERNPState.maxnp);
+        for (let NP of maxNPs) {
+            let startID = NP.slice(0, 1),
+                endID = NP.slice(-1);
+            MaxNPGroup.append("line")
+                .attr("stroke", "blue")
+                .attr("stroke-width", wordSize / 4)
+                .attr("class", "np-viz")
+                .attr("x1", pointsData[startID].x - pointsData[startID].form_width / 2)
+                .attr("y1", margin.top + maxCharacterHeight / 5 + wordSize / 4 * 2)
+                .attr("x2", pointsData[endID].x + pointsData[endID].form_width / 2)
+                .attr("y2", margin.top + maxCharacterHeight / 5 + wordSize / 4 * 2)
+                .style("opacity", "0.5");
+        }
+
+        // NER rectangles
+        let nerGroup = wordsG.append("g").attr("class", "ner-group").style("display", NERNPState.ner);
+        for (let NER of NERs) {
+            let [startID, pos] = NER.slice(0, 1),
+                [endID, _] = NER.slice(-1);
+
+            startID = parseInt(startID);
+            endID = parseInt(endID);
+            nerGroup.append("rect")
+                .attr("fill", "pink")
+                .attr("class", "ner-viz")
+                .attr("value", pos)
+                .attr("x", pointsData[startID].x - pointsData[startID].form_width / 2)
+                .attr("y", 10)
+                .attr("width", (pointsData[endID].x + pointsData[endID].form_width / 2)
+                    - (pointsData[startID].x - pointsData[startID].form_width / 2))
+                .attr("height", 16);  // TODO height of rectangle should depend on font size,
+                                      //  if font size is changed, this must be too
+        }
+
+        // FORM
+        wordsG.append("text")
+            .attr("x", wordSize * 4)
+            .attr("y", wordsY)
+            .style("font-size", wordSize + "px")
+            .style("fill", "grey")
+            .style("text-anchor", "end")
+            .text("form");
+
+        wordsG.append("g")
+            .selectAll()
+            .data(Object.values(pointsData))
+            .enter()
+            .append("text")
+            .attr("class", "words-g-form")
+            .attr("x", (d) => d.x)
+            .attr("y", wordsY)
+            .style("font-size", wordSize + "px")
+            .style("text-anchor", "middle")
+            .text((d) => d.form);
+
+        // LEMMA, XPOSTAG, UPOSTAG, FEATS
+        let colOrder = ["lemma", "xpostag", "upostag", "feats"],
+            heightCounter = 0;
+
+        for (let i = 1; i < 5; i++) {
+            if (header.includes(colOrder[i - 1])) {
+                heightCounter++;
+                let y = margin.top + maxCharacterHeight * heightCounter + maxCharacterHeight / 4;
+                let rowG = wordsG.append("g").attr("class", colOrder[i - 1] + "-g");
+                // Label
+                rowG.append("text")
+                    .attr("x", wordSize * 4)
+                    .attr("y", y)
+                    .style("font-size", wordSize + "px")
+                    .style("fill", "grey")
+                    .style("text-anchor", "end")
+                    .text(colOrder[i - 1]);
+                // Text row
+                rowG.append("g")
+                    .selectAll()
+                    .data(Object.values(pointsData))
+                    .enter()
+                    .append("text")
+                    .attr("max-width", (d) => d.form_width + spaceBetweenText)
+                    .attr("class", colOrder[i - 1])
+                    .attr("value", (d) => d[colOrder[i - 1]])
+                    .attr("x", (d) => d.x - d.form_width / 2)
+                    .attr("y", y)
+                    .style("font-size", wordSize + "px")
+                    .text((d) => d[colOrder[i - 1]])
+                    .call(truncateChars);
+
+                d3.select("#viz-result-" + colOrder[i - 1])
+                    .attr("checked", true);
+            }
+        }
+        svg.attr("height", margin.top + wordsG.node().getBBox().height + margin.bottom);
+        return svg;
+    }
+
+    // DepTree functions
+    function divNums(arr) {
+        let halfVal = (arr.length - 1) * 10 / 2;
+        arr.sort();  // [2, 1, 0] --> [0, 1, 2]
+        const x = d3.scaleLinear([arr.slice(0, 1)[0], arr.slice(arr.length - 1, arr.length)[0]],
+                                 [-1 * halfVal, halfVal]);
+        let positions = [];
+        for (let i of arr) {
+            positions.push(x(i));
+        }
+        return positions.reverse();
+    }
+
+    function pointsToConsiderFunc(n1, n2, dir) {
+        let low = Math.min(n1, n2),
+            high = Math.max(n1, n2);
+
+        if (dir === 1) {  // Right
+            low++;
+        } else {  // Left
+            high--;
+        }
+        let arr = [];
+        while(low <= high){
+           arr.push(low++);
+        }
+        return arr;
+    }
+
+    function generateLevels(dataObj) {
+        let data = Object.values(dataObj);
+
+        if (data.length === 1) {
+            dataObj[1].level = 1;
+            return dataObj;
+        }
+        // Iterate over each word, check head ID, and calculate how high the deprel arch should go
+        let collector = {},
+            levels = {};
+        for (let i = 1; i <= data.length; i++) {
+            // Add a key to the object with two empty lists, one for left, one for right
+            collector[i] = {"-1": [], "1": []};
+        }
+        let levelData,
+            pointsToConsider,
+            finalLevel,
+            oppositeDir;
+        for (let i = 1; i <= data.length; i++) {
+            // Filter all arches that move ith words (starting from lowest)
+            levelData = data.filter((d) => {
+                return d.head !== 0 && Math.abs(d.head - d.id) === i;
+            });
+            for (let levelD of levelData) {
+                // Select all word IDs between start and target IDs
+                pointsToConsider = pointsToConsiderFunc(levelD.id, levelD.head, levelD.direction);
+
+                oppositeDir = levelD.direction === 1 ? "-1" : "1";
+                finalLevel = 1;
+                for (let l = 1; l < data.length; l++) {
+                    if (pointsToConsider.some(r => collector[l][levelD.direction].includes(r)) ||
+                        pointsToConsider.some(r => collector[l][oppositeDir].filter((d) => d !== levelD.head)
+                            .includes(r)) ||
+                        collector[l][oppositeDir].includes(parseInt(levelD.id))
+                        );
+                    {
+                        finalLevel = l + 1;
+                    }
+                    if (l > 1) {
+                        pointsToConsider.push(parseInt(levelD.id));
+                    }
+                }
+                levels[levelD.id] = finalLevel;
+                collector[finalLevel][levelD.direction].push(levelD.head);
+            }
+        }
+        for (let [id, target] of Object.entries(levels)) {
+            dataObj[id].level = target;
+        }
+        return dataObj;
+    }
+
+    function createCurve(pointX, pointText, pointLevel, curveEndPointX, archSectionHeight, archesG) {
+
+        let firstCurvePath = d3.path(),
+            secondCurvePath = d3.path(),
+            archHeight = (archSectionHeight - 20) - pointLevel * 20,
+            middleX = (pointX + curveEndPointX) / 2;
+
+        // First curve --> firstCp1x : pointX, firstCp1y : archHeight, firstCp2x : pointX, firstCp2y : archHeight,
+        //  firstTarget_x : middleX, firstTarget_y : archHeight
+        firstCurvePath.moveTo(pointX, archSectionHeight);
+        firstCurvePath.bezierCurveTo(pointX, archHeight, pointX, archHeight, middleX, archHeight);
+        let firstCurvePathString = firstCurvePath.toString();
+
+        // Second curve --> , secondCp1x : curveEndPointX, secondCp1y : archHeight, secondCp2x : curveEndPointX,
+        //  secondCp2y : archHeight, secondTarget_x : curveEndPointX, secondTarget_y : archSectionHeight
+        secondCurvePath.moveTo(middleX, archHeight);
+        secondCurvePath.bezierCurveTo(curveEndPointX, archHeight, curveEndPointX, archHeight, curveEndPointX,
+            archSectionHeight);
+
+        let secondCurvePathString = secondCurvePath.toString(),
+            arrowG = archesG.append("g");
+
+        // ARROWS
+        arrowG.append("path")
+            .attr("d", firstCurvePathString)
+            .attr("stroke", "grey")
+            .attr("fill", "none")
+            .attr("marker-start", "url(#arrow)");
+        arrowG.append("path")
+            .attr("d", secondCurvePathString)
+            .attr("stroke", "grey")
+            .attr("fill", "none");
+
+        // DEPREL TEXT
+        arrowG.append("text")
+            .attr("x", middleX)
+            .attr("y", archHeight - 3)  // -3 to lift it a little bit above the line
+            .style("font-size", 13 + "px")
+            .style("text-anchor", "middle")
+            .text(pointText);
+    }
+
+    function createDepTree(pointsData, svg, margin, wordSize) {
+        // Draw SVG DepTree visualization using Words SVG
+
+        // Check if any words have head == 0. If yes, ROOT is added as extra word
+        let addRoot = false,
+            headZeroPointsOrderPositions,
+            headZeroPoints = Object.values(pointsData).filter((d) => d.head === 0);
+        if (headZeroPoints.length > 0) {
+            addRoot = true;
+            let headZeroPointsOrder = headZeroPoints.map((d) => d.id);  // .reverse()
+            headZeroPointsOrderPositions = divNums(headZeroPointsOrder);
+
+        }
+
+        const depSvg = svg.clone(true);  // Create copy of words SVG
+
+        // The level of each arch is determined by how many words it has to go across. Here we get all levels to
+        //  help arrange arches relative to each other
+        let nonRootDestPoints = Object.values(pointsData).map((d) => d.level).filter((d) => d !== undefined);
+        let archSectionHeight = 20 * Math.max(nonRootDestPoints.length, 1);
+
+        if (addRoot) {
+            archSectionHeight += Object.values(pointsData).filter((d) => d.head === 0).length * 20;
+        }
+
+        // Create arrow head triangles to be appended to aches
+        const arrowHeadSide = wordSize / 2;
+        const arrowPoints = [[0, 0], [0, arrowHeadSide], [arrowHeadSide, arrowHeadSide / 2]];
+        depSvg
+                .append("defs")
+                .append("marker")
+                .attr("id", "arrow")
+                .attr("viewBox", [0, 0, arrowHeadSide, arrowHeadSide])
+                .attr("refX", arrowHeadSide / 2)
+                .attr("refY", arrowHeadSide / 2)
+                .attr("markerWidth", arrowHeadSide)
+                .attr("markerHeight", arrowHeadSide)
+                .attr("orient", "auto-start-reverse")
+                .attr("fill", "grey")
+                .append("path")
+                .attr("d", d3.line()(arrowPoints));
+
+        // Create arch lines
+        const archesG = depSvg.append("g").attr("class", "arches-g");
+        let maxLevelAdd = 1,
+                toRootPositionIndex = 0;
+        for (let point of Object.values(pointsData)) {
+            if (point.head !== 0) {
+                // Get list of point IDs pointing to the same head
+                //  from the same direction and get index of current ID in list
+                let pointOrder = Object.values(pointsData).filter((item) =>
+                    (item.head === point.head && item.direction === point.direction)).map((item) => item.id);
+                if (point.direction === -1) {
+                    pointOrder = pointOrder.reverse();
+                }
+
+                let pointOrderIndex = pointOrder.indexOf(point.id),
+                    curveEndPointX = pointsData[point.head].x
+                    - (point.direction * (pointOrderIndex + 1) * arrowHeadSide);
+
+                // Create two bezier half curves
+                createCurve(point.x, point.deprel, point.level, curveEndPointX, archSectionHeight, archesG);
+            } else {  // ROOT
+                // Max level is the highest level of arches between ROOT and current ID
+
+                let maxLevel;
+                if (point.id === 1) {  // If first word, then no IDs before it
+                    maxLevel = 1;
+                } else {
+                    let prevLevels = Object.values(pointsData).filter((d) => parseInt(d.id) < parseInt(point.id))
+                            .map((d) => d.level).filter((d) => d !== undefined);
+                    if (prevLevels.length > 0) {  // Shouldn't affect first as id === 1 is already handled above
+                        maxLevel = Math.max(...prevLevels) + maxLevelAdd;
+                    } else {
+                        maxLevel = 1 + maxLevelAdd;
+                    }
+                }
+                // Create two bezier half curves
+                let rootX = headZeroPointsOrderPositions[toRootPositionIndex] + (-50);
+                toRootPositionIndex++;
+                maxLevelAdd++;
+                createCurve(point.x, point.deprel, maxLevel, rootX, archSectionHeight, archesG);
+            }
+        }
+        // If ROOT has to be added, add text to wordsG
+
+        let moveRight = 0;
+        if (addRoot) {
+            wordsG.append("g").append("text")
+                    .attr("x", -50)
+                    .attr("y", margin.top + wordSize / 4)
+                    .style("font-size", wordSize + "px")
+                    .style("fill", "red")
+                    .style("text-anchor", "middle")
+                    .text("ROOT");
+            moveRight = 100;
+        }
+
+        let arches = depSvg.select(".arches-g"),
+            words = depSvg.select(".words-g"),
+            archesMoveY = arches.node().getBBox().y * -1;
+
+        arches.attr("transform", "translate(" + moveRight + "," + archesMoveY + ")");
+        words.attr("transform", "translate(" + moveRight + "," + (arches.node().getBBox().height + 10) + ")");
+        depSvg.attr("height",
+            (arches.node().getBBox().height + words.node().getBBox().height + wordSize * 2 + margin.bottom));
+        return depSvg;
+    }
+
+    // ConsTree functions
+    function createConsTree(sentenceData, wordsSvg, i) {
+
+        const preliminaryConsSvg = wordsSvg.clone(true);
+
+        // Generate one continuous string from separate cons snippets
+        let constituentString = "";
+        sentenceData.forEach(sentenceData => {
+            let token = sentenceData.form,
+                part = sentenceData.cons;
+            part = XRegExp.replace(part, "\*", "(" + XRegExp.replace(token, "[\\(\\)]", "", "all") + ")");
+            constituentString += part;
+        });
+        constituentString = XRegExp.replace(constituentString, '"', '\\"', "all");
+        constituentString = XRegExp.replace(constituentString, "'", "\\'", "all");
+
+        let [nodeStructure, maxNest] = getNodeStructure(constituentString),
+            treeHeight = maxNest * 80;
+
+        preliminaryConsSvg.attr("height", treeHeight + 20 + preliminaryConsSvg.node().getBBox().height);
+        let finalConsSvg;
+        if (consTrees[i] !== undefined) {  // Adding saved consTree <g> tag if already rendered once
+            preliminaryConsSvg.node().appendChild(consTrees[i]);
+            finalConsSvg = preliminaryConsSvg;
+        } else {
+            finalConsSvg = drawConsTree(nodeStructure, sentenceData, preliminaryConsSvg, treeHeight);
+        }
+
+        finalConsSvg.select(".words-g").attr("transform", "translate(0, " + (treeHeight + 4) + ")");
+
+        return finalConsSvg;
+    }
+
+    function getNodeStructure(data) {
+        // Data example: (ROOT(CP(NP(A)(ADJP(kis))(madár))(NP(átrepült))(NP(a)(hídon))(.)))
+        const regex = new XRegExp("(([\\p{L}0-9]|[^\\p{L}\\(\\)])+)|(\\()|(\\))");
+        const items = XRegExp.match(data, regex, "all");
+        // Items example [ "(", "ROOT", "(", "CP", "(", "NP", "(", "A", ")", "(", "ADJP", "(", "kis", ")", ")",
+        //     "(", "madár", ")",
+        // ")", "(", "NP", "(", "átrepült", ")", ")", "(", "NP", "(", "a", ")", "(", "hídon", ")", ")", "(", ".", ")",
+        // ")", ")" ]
+
+        let stack = [],
+            root = null,
+            maxNest = 0;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i] === "(") {
+                // Start of a new node, push a new object onto the stack
+                let newNode = {};
+                if (stack.length > 0) {
+                    let parent = stack[stack.length - 1];
+                    if (!parent.children) {
+                        parent.children = [];
+                    }
+                    parent.children.push(newNode);
+                } else {
+                    root = newNode;
+                }
+                stack.push(newNode);
+                maxNest = Math.max(stack.length, maxNest);
+            } else if (items[i] === ")") {
+                // End of a node, pop the object off the stack
+                stack.pop();
+            } else {
+                // Node text
+                let currentNode = stack[stack.length - 1];
+                currentNode.name = items[i];
+            }
+        }
+        return [root, maxNest];
+
+    }
+
+    let consTrees = [];
+    function drawConsTree(treeData, sentenceData, consSvg, treeHeight) {
+        // Set the dimensions and margins of the diagram
+        const margin = {top: 20, right: 0, bottom: 20, left: 0},
+            height = treeHeight - margin.top - margin.bottom;
+
+        // Get middle point of chart
+        let wordsXstart = consSvg.select(".words-g-form:first-of-type").attr("x"),
+            wordsXend = consSvg.select(".words-g-form:last-of-type").attr("x"),
+            wordsWidth = wordsXend - wordsXstart;
+
+        // Declares a tree layout and assigns the size
+        const treemap = d3.tree()
+            .size([wordsWidth, height]);
+
+        // Assigns the data to a hierarchy using parent-child relationships
+        let nodes = d3.hierarchy(treeData);
+
+        // Maps the node data to the tree layout
+        nodes = treemap(nodes);
+
+        // Reposition word node x coordinates
+        let wordNodes = nodes.descendants().filter((d) => {return d.height === 0;}).sort((a, b) => a.x - b.x);
+        for (let i = 0; i < wordNodes.length; i++) {
+            wordNodes[i].x = sentenceData[i].x - wordsXstart;
+        }
+
+        // Reposition all other nodes
+        let childrenXs,
+            levelNodes;
+        for (let i = 1; i < nodes.height + 1; i++) {
+              levelNodes = nodes.descendants().filter(function(d) {
+              return d.height === i && d.children.length > 0;
+            });
+            for (let node of levelNodes) {
+                childrenXs = node.children.map((d) => d.x);
+                node.x = (Math.min(...childrenXs) + Math.max(...childrenXs)) / 2;
+                node.y = node.y + Math.floor(Math.random() * (4 - -4 + 1) + -4);
+            }
+        }
+
+        const g = consSvg.append("g").attr("class", "cons-tree-group")
+                .attr("transform", "translate(" + wordsXstart + "," + margin.top + ")");
+
+        let lineGen = d3.line();
+        g.selectAll(".dotted-link")
+            .data(wordNodes).enter()
+            .append("path")
+            .attr("d", function(d, i) {
+                return lineGen([[d.x, d.y], [(sentenceData[i].x-wordsXstart), treeHeight-10]]);
+            })
+            .attr("fill", "none")
+            .attr("stroke", "#ccc")
+            .attr("stroke-dasharray", "4 4")
+            .attr("stroke-width", "2px");
+
+        // Adds the links between the node
+        g.selectAll(".link")
+            .data(nodes.descendants().slice(1))
+            .enter().append("path")
+            .attr("class", "link")
+            .attr("d", function(d, i) {
+                return "M" + d.x + "," + d.y
+                    + "C" + d.x + "," + (d.y + d.parent.y) / 2
+                    + " " + d.parent.x + "," +  (d.y + d.parent.y) / 2
+                    + " " + d.parent.x + "," + d.parent.y;
+                })
+            .attr("fill", "none")
+            .attr("stroke", "#ccc")
+            .attr("stroke-width", "2px");
+
+        // Adds each node as a group
+        const node = g.selectAll(".node")
+            .data(nodes.descendants())
+            .enter().append("g")
+            .attr("transform", function(d) {
+                return "translate(" + d.x + "," + d.y + ")"; });
+
+        // Adds the white rect to the node
+        node.append("rect")
+            .attr("width", 40)
+            .attr("height", 20)
+            .attr("x", -20)
+            .attr("y", -10)
+            .attr("stroke", null)
+            .attr("fill", "white")
+            .attr("fill-opacity", (d) => {
+                if (d.children === undefined) {
+                    return 0.0;
+                } else {
+                    return 0.9;
+                }
+            });
+
+        // Adds the text to the node
+        node.append("text")
+            .attr("dy", ".35em")
+            .attr("y", 0)
+            .attr("class", "consTree-text")
+            .attr("text-anchor", "middle")
+            .text(function(d) {
+                if (d.height !== 0) {
+                  return d.data.name;
+                } else {
+                  return "";
+                }
+            });
+        consTrees.push(g.node().cloneNode(true));
+        return consSvg;
+    }
+
+
+    // SVG download functions
+    function saveSvg(parentElement) {
+        let name = "output.svg",
+            svgEl = parentElement.querySelector("svg");
+        svgEl.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        var svgData = svgEl.outerHTML;
+        var preface = '<?xml version="1.0" standalone="no"?>\r\n';
+        var svgBlob = new Blob([preface, svgData], {type:"image/svg+xml;charset=utf-8"});
+        var svgUrl = URL.createObjectURL(svgBlob);
+        var downloadLink = document.createElement("a");
+        downloadLink.href = svgUrl;
+        downloadLink.download = name;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function addSvgDownloadButton(div) {
+        div.innerHTML +=
+        `<div class="viz-button-tray">
+                <input class="download-button" type="button" value="Download"
+                    onclick="saveSvg(this.parentElement.parentElement)">
+            </div>`;
+    }
+</script>
+</body>
 </html>

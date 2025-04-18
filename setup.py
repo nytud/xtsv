@@ -34,6 +34,7 @@ setuptools.setup(
         'flask',
         'flask-restful',
     ],
+    include_package_data=True,
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)',
